@@ -13,8 +13,6 @@ import sys
 import string
 import time
 
-sys.setrecursionlimit(10000)
-
 filter = ''.join(
     [['.', chr(x)][chr(x) in string.printable[:-5]] for x in xrange(256)])
 
