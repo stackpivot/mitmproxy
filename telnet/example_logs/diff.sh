@@ -1,5 +1,13 @@
 #!/usr/bin/bash
-#
-# Compare two fencing logs in vim, ignoring timestamps.
-
-vimdiff <(cut -c14- $1) <(cut -c14- $2)
+if [[ -z "$2" ]] ; then
+    echo "Compare two fencing logs in vimdiff, ignoring column with timestamps."
+    echo
+    echo "Usage:"
+    echo "  $0 original new"
+    exit 1
+elif [[ ! -f $1 || ! -f $2 ]] ; then
+    echo "At least one of the files you specified does not exist."
+    exit 2
+else
+    vimdiff <(cut -c14- $1) <(cut -c14- $2)
+fi
