@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2.7
 '''
 Telnet interceptor and logger.
 See --help for usage.
