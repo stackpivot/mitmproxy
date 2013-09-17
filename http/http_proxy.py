@@ -1,6 +1,6 @@
 #!/usr/bin/env python2.7
 '''
-HTTP interceptor and logger.
+HTTP (or any other protocol running over port 80) interceptor and logger.
 See --help for usage.
 
 Assumptions:

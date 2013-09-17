@@ -1,6 +1,6 @@
 #!/usr/bin/env python2.7
 '''
-Telnet interceptor and logger.
+Telnet (or any other protocol running over port 23) interceptor and logger.
 See --help for usage.
 '''
 

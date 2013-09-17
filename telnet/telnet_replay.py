@@ -1,6 +1,7 @@
 #!/usr/bin/env python2.7
 '''
-Replay server for telnet. See --help for usage.
+Replay server for telnet (or any other protocol running over port 23).
+See --help for usage.
 
 Assumptions:
   * client ALWAYS talks first (sends option negotiation requests)

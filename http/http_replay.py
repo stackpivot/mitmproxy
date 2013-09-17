@@ -1,9 +1,10 @@
 #!/usr/bin/env python2.7
 '''
-Replay server for HTTP. See --help for usage.
+Replay server for HTTP (or any other protocol running over port 80).
+See --help for usage.
 
 Assumptions:
-  * client ALWAYS talks first (sends HTTP GET)
+  * client ALWAYS talks first (sends HTTP GET or something)
 
 If something doesn't work (especially http redirects
 and absolute links), see the comments in http_proxy.py. ;)
