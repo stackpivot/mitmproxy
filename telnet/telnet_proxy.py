@@ -57,88 +57,87 @@ class Logger():
                 "%0.10f\t%s\t0x%s\t#%s\n"
                 % (timestamp, who, what, plain))
 
-
-class TelnetProxyClient(protocol.Protocol):
-    def connectionMade(self):
-        sys.stderr.write('Connected to physical fence device.\n')
-        self.sq = self.factory.sq
-        self.cq = self.factory.cq
-        self.log = self.factory.log
-
-        self.cq.get().addCallback(self.serverDataReceived)
-
-    def serverDataReceived(self, data):
+class ProxyProtocol(protocol.Protocol):
+    def proxyDataReceived(self, data):
         if data is False:
-            self.cq = None
+            self.receive = None
             self.transport.loseConnection()
-        elif self.cq:
-            self.log.log("client", data.encode('hex'))
+        elif self.transmit:
             self.transport.write(data)
-            self.cq.get().addCallback(self.serverDataReceived)
+            self.receive.get().addCallback(self.proxyDataReceived)
         else:
-            self.factory.cq.put(data)
+            self.receive.put(data)
 
     def dataReceived(self, data):
-        self.log.log("server", data.encode('hex'))
-        self.factory.sq.put(data)
+        self.log.log(self.original, data.encode('hex'))
+        self.transmit.put(data)
 
     def connectionLost(self, reason):
-        if self.cq:
-            sys.stderr.write('Disconnected from physical fence device.\n')
+        if self.receive:
+            if self.original == 'server':
+                sys.stderr.write('Disconnected from pysical fence device.\n')
+            else:
+                sys.stderr.write('Client disconnected.\n')
             self.log.closeLog()
-            self.cq = None
+            self.receive = None
+            self.transmit.put(False)
             try:
                 reactor.stop()
             except:
                 pass
 
 
+class TelnetProxyClient(ProxyProtocol):
+    def connectionMade(self):
+        sys.stderr.write('Connected to physical fence device.\n')
+        self.original = self.factory.original
+        # data for original client
+        self.transmit = self.factory.cq
+        # data for original server
+        self.receive = self.factory.sq
+        self.log = self.factory.log
+
+        self.receive.get().addCallback(self.proxyDataReceived)
+
+
 class TelnetProxyClientFactory(protocol.ClientFactory):
     protocol = TelnetProxyClient
 
     def __init__(self, sq, cq, log):
+        # original participant of communication
+        self.original = "server"
         self.sq = sq
         self.cq = cq
         self.log = log
 
 
-class TelnetProxyServer(protocol.Protocol):
+class TelnetProxyServer(ProxyProtocol):
     def connectionMade(self):
+        self.original = self.factory.original
         self.host = self.factory.host
         self.port = self.factory.port
         self.log = self.factory.log
-        self.sq = self.factory.sq
-        self.cq = self.factory.cq
+        # Data for original server.
+        self.transmit = self.factory.sq
+        # Data for original client.
+        self.receive = self.factory.cq
 
-        self.sq.get().addCallback(self.clientDataReceived)
+        self.receive.get().addCallback(self.proxyDataReceived)
 
         sys.stderr.write('Client connected.\n')
         sys.stderr.write('Connecting to %s:%d...\n' % (self.host, self.port))
 
-        factory = TelnetProxyClientFactory(self.sq, self.cq, self.log)
+        factory = TelnetProxyClientFactory(self.factory.sq, self.factory.cq,
+            self.log)
         reactor.connectTCP(self.host, self.port, factory)
-
-    def clientDataReceived(self, data):
-        self.transport.write(data)
-        self.sq.get().addCallback(self.clientDataReceived)
-
-    def dataReceived(self, data):
-        self.cq.put(data)
-
-    def connectionLost(self, reason):
-        sys.stderr.write('Client disconnected.\n')
-        self.cq.put(False)
-        self.log.closeLog()
-        try:
-            reactor.stop()
-        except:
-            pass
 
 
 class TelnetProxyServerFactory(protocol.ServerFactory):
     protocol = TelnetProxyServer
 
     def __init__(self, host, port, log):
+        # original participant of communication
+        self.original = "client"
         self.host = host
         self.port = port
         self.log = log
