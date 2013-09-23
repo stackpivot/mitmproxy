@@ -19,24 +19,31 @@ filter = ''.join(
 
 
 class Logger():
-    """
+    '''
     logs telnet traffic to STDOUT/file (TAB-delimited)
     format: "time_since_start client/server 0xHex_data"
     eg. "0.0572540760 server 0x0a0d55736572204e616d65203a20 #plaintext"
         "0.1084461212 client 0x6170630a #plaintext"
-    """
+    '''
 
     def __init__(self):
         self._startTime = None
         self._logFile = None
 
     def openLog(self, filename):
+        '''
+        Set up a file for writing a log into it.
+        If not called, log is written to STDOUT.
+        '''
         try:
             self._logFile = open(filename, 'w')
         except:
             raise
 
     def closeLog(self):
+        '''
+        Try to close a possibly open log file.
+        '''
         if self._logFile is not None:
             try:
                 self._logFile.close()
@@ -45,18 +52,24 @@ class Logger():
                 raise
 
     def log(self, who, what):
+        '''
+        Add a new message to log.
+        '''
         # translate non-printable chars to dots
         plain = what.decode('hex').translate(filter)
+
         if self._startTime is None:
             self._startTime = time.time()
 
         timestamp = time.time() - self._startTime
 
         if self._logFile is not None:
+            # write to a file
             self._logFile.write(
                 "%0.10f\t%s\t0x%s\t#%s\n"
                 % (timestamp, who, what, plain))
         else:
+            # STDOUT output
             sys.stdout.write(
                 "%0.10f\t%s\t0x%s\t#%s\n"
                 % (timestamp, who, what, plain))
@@ -72,25 +85,52 @@ class TelnetServer(protocol.Protocol):
         sys.stderr.write('Client connected.\n')
 
     def sendNext(self):
+        '''
+        Called after we've received data from the client.
+        We shall send (with a delay) all the messages
+        from our queue until encountering either None or
+        an exception. In case a reply is not expected from
+        us at this time, the head of queue will hold None
+        (client is expected to send more messages before
+        we're supposed to send a reply) - so we just "eat"
+        the None from head of our queue (sq).
+        '''
         try:
             reply = self.sq.get(False)
         except:
+            # expect the unexpected
             raise
 
         while reply is not None:
-            self.log.log('server', reply[1])
             (delay, what) = reply
+            self.log.log('server', what)
+            # sleep for a while (read from proxy log),
+            # modified by delayMod
             time.sleep(delay * self.delayMod)
             self.transport.write(what.decode('hex'))
             try:
+                # gets either:
+                #  * a message - continue while loop (send the message)
+                #  * None - break from the loop (client talks next)
+                #  * Empty exception - close the session
                 reply = self.sq.get(False)
             except Queue.Empty:
+                # both cq and sq empty -> close the session
                 sys.stderr.write('The End.\n')
                 self.log.closeLog()
                 self.transport.loseConnection()
                 break
+            except:
+                # no idea what just happened
+                raise
 
     def dataReceived(self, data):
+        '''
+        Called when client send us some data.
+        Compare received data with expected message from
+        the client message queue (cq), report mismatch (if any)
+        try sending a reply (if available) by calling sendNext().
+        '''
         try:
             expected = self.cq.get(False)
         except Queue.Empty:
@@ -108,6 +148,9 @@ class TelnetServer(protocol.Protocol):
                 % (exp_hex, got_hex))
 
     def connectionLost(self, reason):
+        '''
+        Remote end closed the session.
+        '''
         sys.stderr.write('Client disconnected.\n')
         self.log.closeLog()
         reactor.stop()
@@ -150,22 +193,37 @@ def main():
         sq = Queue.Queue()
         cq = Queue.Queue()
 
+        # Read the whole proxy log into two separate queues,
+        # one with the expected client messages (cq) and the
+        # other containing the replies that should be sent
+        # to the client.
         with open(opts.inputFile) as inFile:
             lastTime = 0
             for line in inFile:
+                # optional fourth field contains comments,
+                # usually an ASCII representation of the data
                 (timestamp, who, what, _) = line.rstrip('\n').split('\t')
+                # strip the pretty-print "0x" prefix from hex data
                 what = what[2:]
+                # compute the time between current and previous msg
                 delay = float(timestamp) - lastTime
                 lastTime = float(timestamp)
+
                 if who == 'server':
+                    # server reply queue
                     sq.put([delay, what])
                 elif who == 'client':
+                    # put a sync mark into server reply queue
+                    # to distinguish between cases of:
+                    #  * reply consists of a single packet
+                    #  * more packets
                     sq.put(None)  # sync mark
+                    # expected client messages
                     cq.put([delay, what])
                 else:
-                    raise Exception('WTF?!')
+                    raise Exception('Malformed proxy log!')
 
-        # get rid of first sync mark (client talks first)
+        # get rid of first sync mark (client ALWAYS talks first)
         sq.get(False)
 
         sys.stderr.write('Server running on localhost:%d\n' % opts.localPort)
