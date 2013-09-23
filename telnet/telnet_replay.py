@@ -72,7 +72,11 @@ class TelnetServer(protocol.Protocol):
         sys.stderr.write('Client connected.\n')
 
     def sendNext(self):
-        reply = self.sq.get(False)
+        try:
+            reply = self.sq.get(False)
+        except:
+            raise
+
         while reply is not None:
             self.log.log('server', reply[1])
             (delay, what) = reply
