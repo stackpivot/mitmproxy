@@ -75,7 +75,6 @@ class ProxyProtocol(protocol.Protocol):
     '''
     Protocol class common to both client and server.
     '''
-    #TODO: should this *really* be the same for both?
     def proxyDataReceived(self, data):
         '''
         Callback function for both client and server side of the proxy.
@@ -87,14 +86,20 @@ class ProxyProtocol(protocol.Protocol):
             # other end.
             self.rx = None
             self.transport.loseConnection()
-        elif self.tx:
-            # Transmit queue is defined => connection is open,
-            # we can send data to it.
+            # the reactor should be stopping just about now
+        elif self.tx is not None:
+            # Transmit queue is defined => connection to
+            # the other side is still open, we can send data to it.
             self.transport.write(data)
             self.rx.get().addCallback(self.proxyDataReceived)
         else:
-            #XXX: wouldn't this just cause an endless loop?
-            self.rx.put(data)
+            # got some data to be sent, but we no longer
+            # have a connection to the other side
+            sys.stderr.write(
+                'Unable to send queued data: not connected to %s.\n'
+                % (self.origin))
+            # the other proxy instance should already be calling
+            # reactor.stop(), so we can just take a nap
 
     def dataReceived(self, data):
         '''
