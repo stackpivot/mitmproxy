@@ -15,24 +15,31 @@ filter = ''.join(
 
 
 class Logger():
-    """
+    '''
     logs telnet traffic to STDOUT/file (TAB-delimited)
     format: "time_since_start client/server 0xHex_data"
-    eg. "0.0572540760 server 0x0a0d55736572204e616d65203a20"
-        "0.1084461212 client 0x6170630a"
-    """
+    eg. "0.0572540760 server 0x0a0d55736572204e616d65203a20 #plaintext"
+        "0.1084461212 client 0x6170630a #plaintext"
+    '''
 
     def __init__(self):
         self._startTime = None
         self._logFile = None
 
     def openLog(self, filename):
+        '''
+        Set up a file for writing a log into it.
+        If not called, log is written to STDOUT.
+        '''
         try:
             self._logFile = open(filename, 'w')
         except:
             raise
 
     def closeLog(self):
+        '''
+        Try to close a possibly open log file.
+        '''
         if self._logFile is not None:
             try:
                 self._logFile.close()
@@ -41,63 +48,97 @@ class Logger():
                 raise
 
     def log(self, who, what):
+        '''
+        Add a new message to log.
+        '''
         # translate non-printable chars to dots
         plain = what.decode('hex').translate(filter)
+
         if self._startTime is None:
             self._startTime = time.time()
 
         timestamp = time.time() - self._startTime
 
         if self._logFile is not None:
+            # write to a file
             self._logFile.write(
                 "%0.10f\t%s\t0x%s\t#%s\n"
                 % (timestamp, who, what, plain))
         else:
+            # STDOUT output
             sys.stdout.write(
                 "%0.10f\t%s\t0x%s\t#%s\n"
                 % (timestamp, who, what, plain))
 
 
 class ProxyProtocol(protocol.Protocol):
+    '''
+    Protocol class common to both client and server.
+    '''
+    #TODO: should this *really* be the same for both?
     def proxyDataReceived(self, data):
+        '''
+        Callback function for both client and server side of the proxy.
+        Each side specifies its input (rx) and output (tx) queues.
+        '''
         if data is False:
+            # Special value indicating that one side of our proxy
+            # no longer has an open connection. So we close the
+            # other end.
             self.rx = None
             self.transport.loseConnection()
         elif self.tx:
+            # Transmit queue is defined => connection is open,
+            # we can send data to it.
             self.transport.write(data)
             self.rx.get().addCallback(self.proxyDataReceived)
         else:
+            #XXX: wouldn't this just cause an endless loop?
             self.rx.put(data)
 
     def dataReceived(self, data):
+        '''
+        Received something from our input. Put it into the output queue.
+        '''
         self.log.log(self.origin, data.encode('hex'))
         self.tx.put(data)
 
     def connectionLost(self, reason):
-        if self.rx:
+        '''
+        Either end of the proxy received a disconnect.
+        '''
+        if self.rx:  # wat? why? is it really needed?
             if self.origin == 'server':
                 sys.stderr.write('Disconnected from pysical fence device.\n')
             else:
                 sys.stderr.write('Client disconnected.\n')
             self.log.closeLog()
+            # destroy the receive queue
             self.rx = None
+            # put a special value into tx queue to indicate connection loss
             self.tx.put(False)
             try:
+                # stop the program
                 reactor.stop()
             except:
+                # other proxy end already called reactor.stop()
                 pass
 
 
 class TelnetProxyClient(ProxyProtocol):
     def connectionMade(self):
+        '''
+        Successfully established a connection to the real server.
+        '''
         sys.stderr.write('Connected to physical fence device.\n')
         self.origin = self.factory.origin
-        # data for original client
-        self.tx = self.factory.cq
-        # data for original server
+        # input - data from the real server
         self.rx = self.factory.sq
+        # output - data for the real client
+        self.tx = self.factory.cq
         self.log = self.factory.log
 
+        # callback for the receiver queue
         self.rx.get().addCallback(self.proxyDataReceived)
 
 
@@ -105,7 +146,7 @@ class TelnetProxyClientFactory(protocol.ClientFactory):
     protocol = TelnetProxyClient
 
     def __init__(self, sq, cq, log):
-        # original participant of communication
+        # which side we're talking to?
         self.origin = "server"
         self.sq = sq
         self.cq = cq
@@ -113,21 +154,29 @@ class TelnetProxyClientFactory(protocol.ClientFactory):
 
 
 class TelnetProxyServer(ProxyProtocol):
+    '''
+    Server part of the MITM proxy.
+    '''
     def connectionMade(self):
+        '''
+        Unsuspecting client connected to our fake server. *evil grin*
+        '''
         self.origin = self.factory.origin
         self.host = self.factory.host
         self.port = self.factory.port
         self.log = self.factory.log
-        # Data for original server.
-        self.tx = self.factory.sq
-        # Data for original client.
+        # input - data from the real client
         self.rx = self.factory.cq
+        # output - data for the real server
+        self.tx = self.factory.sq
 
+        # callback for the receiver queue
         self.rx.get().addCallback(self.proxyDataReceived)
 
         sys.stderr.write('Client connected.\n')
         sys.stderr.write('Connecting to %s:%d...\n' % (self.host, self.port))
 
+        # now connect to the real server and begin proxying...
         factory = TelnetProxyClientFactory(
             self.factory.sq, self.factory.cq, self.log)
         reactor.connectTCP(self.host, self.port, factory)
@@ -137,7 +186,7 @@ class TelnetProxyServerFactory(protocol.ServerFactory):
     protocol = TelnetProxyServer
 
     def __init__(self, host, port, log):
-        # original participant of communication
+        # which side we're talking to?
         self.origin = "client"
         self.host = host
         self.port = port
