@@ -1,6 +1,6 @@
 #!/usr/bin/bash
 if [[ -z "$2" ]] ; then
-    echo "Compare two fencing logs in vimdiff, ignoring column with timestamps."
+    echo "Compare two proxy logs in vimdiff, ignoring column with timestamps."
     echo
     echo "Usage:"
     echo "  $0 original new"

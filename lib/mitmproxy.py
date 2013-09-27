@@ -18,11 +18,11 @@ class ProxyOptionParser():
         self.parser.add_option(
             '-H', '--host', dest='host', type='string',
             metavar='HOST', default='localhost',
-            help='Hostname/IP of physical fencing device')
+            help='Hostname/IP of real server')
         self.parser.add_option(
             '-P', '--port', dest='port', type='int',
             metavar='PORT', default=port,
-            help='Port of physical fencing device')
+            help='Port of real server')
         self.parser.add_option(
             '-p', '--local-port', dest='localPort', type='int',
             metavar='PORT', default=localPort,
@@ -172,7 +172,7 @@ class ProxyProtocol(protocol.Protocol):
         Either end of the proxy received a dosconnect.
         '''
         if self.origin == 'server':
-            sys.stderr.write('Disconnected from physical fence device.\n')
+            sys.stderr.write('Disconnected from real server.\n')
         else:
             sys.stderr.write('Client disconnected.\n')
         self.log.closeLog()
@@ -190,7 +190,7 @@ class ProxyClient(ProxyProtocol):
         '''
         Successfully established a connection to the real server.
         '''
-        sys.stderr.write('Connected to physical fence device.\n')
+        sys.stderr.write('Connected to real server.\n')
         self.origin = self.factory.origin
         # input - data from the real server
         self.rx = self.factory.sq
