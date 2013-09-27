@@ -112,22 +112,18 @@ class ProxyProtocol(protocol.Protocol):
         '''
         Either end of the proxy received a disconnect.
         '''
-        if self.rx:  # wat? why? is it really needed?
-            if self.origin == 'server':
-                sys.stderr.write('Disconnected from pysical fence device.\n')
-            else:
-                sys.stderr.write('Client disconnected.\n')
-            self.log.closeLog()
-            # destroy the receive queue
-            self.rx = None
-            # put a special value into tx queue to indicate connection loss
-            self.tx.put(False)
-            try:
-                # stop the program
-                reactor.stop()
-            except:
-                # other proxy end already called reactor.stop()
-                pass
+        if self.origin == 'server':
+            sys.stderr.write('Disconnected from pysical fence device.\n')
+        else:
+            sys.stderr.write('Client disconnected.\n')
+        self.log.closeLog()
+        # destroy the receive queue
+        self.rx = None
+        # put a special value into tx queue to indicate connection loss
+        self.tx.put(False)
+        # stop the program
+        if reactor.running:
+            reactor.stop()
 
 
 class TelnetProxyClient(ProxyProtocol):
