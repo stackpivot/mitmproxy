@@ -1,0 +1,6 @@
+**.swp
+**.pyc
+ssl/keys/*.crt
+ssl/keys/*.csr
+ssl/keys/*.key
+ssl/keys/*.key.org
