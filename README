@@ -1,5 +1,5 @@
-MITM
-----
+MITM Proxy
+==========
 
 A collection of logging proxy servers and
-replay utilities for Telnet, SSH and HTTP. 
+replay utilities for Telnet, HTTP, SSL and SSH. 
