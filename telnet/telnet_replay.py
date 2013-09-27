@@ -81,6 +81,7 @@ class TelnetServer(protocol.Protocol):
         self.sq = self.factory.sq
         self.cq = self.factory.cq
         self.delayMod = self.factory.delayMod
+        self.success = False
 
         sys.stderr.write('Client connected.\n')
 
@@ -116,7 +117,8 @@ class TelnetServer(protocol.Protocol):
                 reply = self.sq.get(False)
             except Queue.Empty:
                 # both cq and sq empty -> close the session
-                sys.stderr.write('The End.\n')
+                sys.stderr.write('Success.\n')
+                self.success = True
                 self.log.closeLog()
                 self.transport.loseConnection()
                 break
@@ -151,6 +153,8 @@ class TelnetServer(protocol.Protocol):
         '''
         Remote end closed the session.
         '''
+        if not self.success:
+            sys.stderr.write('FAIL! Premature end: not all messages sent.\n')
         sys.stderr.write('Client disconnected.\n')
         self.log.closeLog()
         reactor.stop()
