@@ -4,7 +4,7 @@ SSL interceptor and logger.
 See --help for usage.
 '''
 
-from twisted.internet import protocol, reactor, defer, ssl
+from twisted.internet import reactor, ssl
 import sys
 
 sys.path.append('../lib')
@@ -26,8 +26,8 @@ def main():
     if parsed.opts.logFile is not None:
         log.openLog(parsed.opts.logFile)
 
-    sys.stderr.write('Server running on localhost:%d...\n'
-        % parsed.opts.localPort)
+    sys.stderr.write(
+        'Server running on localhost:%d...\n' % parsed.opts.localPort)
 
     factory = mitmproxy.ProxyServerFactory(
         ProxyServer, parsed.opts.host, parsed.opts.port, log)
