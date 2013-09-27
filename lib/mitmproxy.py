@@ -217,6 +217,16 @@ class ProxyServer(ProxyProtocol):
     '''
     Server part of the MITM proxy.
     '''
+    def connectToServer(self):
+        '''
+        Example:
+            factory = mitmproxy.ProxyClientFactory(
+                self.factory.sq, self.factory.cq, self.log)
+            reactor.connect[PROTOCOL](
+                self.host, self.port, factory [, OTHER_OPTIONS])
+        '''
+        raise Exception('You should implement this method in your code.')
+
     def connectionMade(self):
         '''
         Unsuspecting client connected to our fake server. *evil grin*
@@ -349,13 +359,13 @@ class ReplayServerFactory(protocol.ServerFactory):
 
 
 class LogReader():
+    '''
+    Read the whole proxy log into two separate queues,
+    one with the expected client messages (cq) and the
+    other containing the replies that should be sent
+    to the client.
+    '''
     def __init__(self, inputFile, sq, cq):
-        '''
-        Read the whole proxy log into two separate queues,
-        one with the expected client messages (cq) and the
-        other containing the replies that should be sent
-        to the client.
-        '''
         with open(inputFile) as inFile:
             lastTime = 0
             for line in inFile:
@@ -387,6 +397,10 @@ class LogReader():
 
 
 class LogViewer():
+    '''
+    Loads and simulates a given log file in either real-time
+    or dilated by a factor of delayMod.
+    '''
     def __init__(self, inputFile, delayMod):
         with open(inputFile) as inFile:
             lastTime = 0
