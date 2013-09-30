@@ -1,16 +1,18 @@
 MITM Proxy
 ==========
 
-A collection of logging proxy servers and replay utilities for:
+A collection of multi-protocol logging proxy servers and replay utilities.
+
+Supported protocols:
   * Telnet
   * HTTP
   * SSL
-  * SSH
+  * SSH - soon
 
 
 Motivation
 ----------
 
-Created as a debugging tool for various fencing agents that tend to break
-with each fencing device firmware upgrade, and then again (after fixing
-for the new FW) for older firmware versions. :)
+Created as a debugging tool for various enterprise fencing agents that tend
+to break with each fencing device firmware upgrade, and then again (after
+fixing for the new FW) for older firmware versions. :)
