@@ -20,41 +20,26 @@ Created as a debugging tool for various enterprise fencing agents that tend
 to break with each fencing device firmware upgrade, and then again (after
 fixing for the new FW) for older firmware versions. :)
 
-Example usage
+Example Usage
 -------------
-* Launch the logging proxy server
-```
-$ cd telnet
-$ ./telnet_proxy.py -H example.com -o telnet.log
-Server running on localhost:2323...
-```
+* Fencing-specific usage:
+  * Launch the logging proxy server and fence agent
+  ```
+  $ cd telnet
+  $ ./telnet_proxy.py -H apc.example.com -o fencing_apc.log &
+  $ fence_apc -a localhost -u 2323 -l login -p password -n 1
+  ```
+  APC plug #1 will be powered off and on again and we'll have the session log.
+  
+  * Replay the log
+  ```
+  $ ./telnet_replay.py -f fencing.log &
+  $ fence_apc -a localhost -u 2323 -l user -p password -n 1
+  [...]
+  ERROR: Expected 6d6f67696e0d000a (login...), got 757365720d000a (user...).
+  FAIL! Premature end: not all messages sent.
+  Client disconected.
 
-* Open another terminal and telnet to our proxy
-```
-$ telnet localhost 2323 < commands.txt
-```
-Proxy prints info about client connecting, connection attempt
-to the real server, and eventually disconnect both ends after
-the conversation ends.
-
-* Start the replay server with the created log file (slowed down by a factor of 3)
-```
-$ ./telnet_replay.py -f telnet.log -d 3 -o /dev/null
-Server running on localhost:2323
-```
-
-* Telnet into the replay server with the same commands (should succeed)
-```
-$ telnet localhost 2323 < commands.txt
-```
-Proxy prints the usual connection info and a "success" message.
-
-* Try it with a different set of commands (should fail and print the difference)
-```
-$ telnet localhost 2323 < othercommands.txt
-```
-...and the replay server says:
-```
-ERROR: Expected [blah-blah], got [different-blah-blah].
-FAIL! Premature end: not all messages sent.
-```
+  Unable to connect/login to fencing device
+  ```
+  Oops, wrong username. ;)
