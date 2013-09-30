@@ -8,11 +8,9 @@ Supported protocols:
   * SSL
   * SSH - soon
 
-
 License
 -------
 Distributed under the GNU General Public License version 2 (GPLv2).
-
 
 Motivation
 ----------
@@ -22,8 +20,8 @@ fixing for the new FW) for older firmware versions. :)
 
 Example Usage
 -------------
-* Fencing-specific usage:
-  * Launch the logging proxy server and fence agent
+* Fencing-specific usage
+  * Launch the logging proxy server and fence agent.
 
     ```
     $ cd telnet
@@ -33,7 +31,7 @@ Example Usage
 
     APC plug #1 will be powered off and on again and we'll have the session log.
   
-  * Replay the log at twice the speed
+  * Replay the log at twice the speed.
 
     ```
     $ ./telnet_replay.py -f fencing_apc.log -d 0.5 &
@@ -47,3 +45,17 @@ Example Usage
     ```
 
     Oops, wrong username. ;)
+
+* Log viewer usage
+  * The log viewer displays the whole session in real time or with an optional time dilation.
+  
+  ```
+  $ ./logviewer.py -f fencing_apc.log -d 10
+  ```
+
+* Log diff usage
+  * Shows the diff of two logs in vimdiff without comparing the timestamps.
+
+  ```
+  $ ./logdiff.sh fencing_apc.log other_fencing_apc.log
+  ```
