@@ -70,6 +70,10 @@ class ViewerOptionParser():
         self.opts, self.args = self.parser.parse_args()
 
 
+filter = ''.join(
+    [['.', chr(x)][chr(x) in string.printable[:-5]] for x in xrange(256)])
+
+
 class Logger():
     '''
     logs telnet traffic to STDOUT/file (TAB-delimited)
@@ -77,9 +81,6 @@ class Logger():
     eg. "0.0572540760 server 0x0a0d55736572204e616d65203a20 #plaintext"
         "0.1084461212 client 0x6170630a #plaintext"
     '''
-
-    filter = ''.join(
-        [['.', chr(x)][chr(x) in string.printable[:-5]] for x in xrange(256)])
 
     def __init__(self):
         self._startTime = None
@@ -111,7 +112,7 @@ class Logger():
         Add a new message to log.
         '''
         # translate non-printable chars to dots
-        plain = what.decode('hex').translate(self.filter)
+        plain = what.decode('hex').translate(filter)
 
         if self._startTime is None:
             self._startTime = time.time()
@@ -334,8 +335,9 @@ class ReplayServer(protocol.Protocol):
             self.sendNext()
         else:
             sys.stderr.write(
-                "ERROR: Expected %s, got %s.\n"
-                % (exp_hex, got_hex))
+                "ERROR: Expected %s (%s), got %s (%s).\n"
+                % (exp_hex, exp_hex.decode('hex').translate(filter),
+                    got_hex, got_hex.decode('hex').translate(filter)))
 
     def connectionLost(self, reason):
         '''
