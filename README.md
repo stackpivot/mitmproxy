@@ -33,10 +33,10 @@ Example Usage
 
     APC plug #1 will be powered off and on again and we'll have the session log.
   
-  * Replay the log
+  * Replay the log at twice the speed
 
     ```
-    $ ./telnet_replay.py -f fencing_apc.log &
+    $ ./telnet_replay.py -f fencing_apc.log -d 0.5 &
     $ fence_apc -a localhost -u 2323 -l user -p password -n 1
     [...]
     ERROR: Expected 6d6f67696e0d000a (login...), got 757365720d000a (user...).
