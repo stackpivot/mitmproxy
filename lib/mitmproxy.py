@@ -213,6 +213,10 @@ class ProxyClientFactory(protocol.ClientFactory):
         self.cq = cq
         self.log = log
 
+    def clientConnectionFailed(self, connector, reason):
+        self.cq.put(False)
+        sys.stderr.write('Connection to host failed:\n%s\n' % reason)
+
 
 class ProxyServer(ProxyProtocol):
     '''
