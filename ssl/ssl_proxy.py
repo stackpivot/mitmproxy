@@ -14,7 +14,7 @@ import mitmproxy
 class ProxyServer(mitmproxy.ProxyServer):
     def connectToServer(self):
         factory = mitmproxy.ProxyClientFactory(
-            self.factory.sq, self.factory.cq, self.log)
+            self.tx, self.rx, self.log)
         reactor.connectSSL(
             self.host, self.port, factory, ssl.ClientContextFactory())
 

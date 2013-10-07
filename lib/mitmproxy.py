@@ -12,6 +12,10 @@ import string
 import re
 
 
+class MITMException(Exception):
+    pass
+
+
 class ProxyOptionParser():
     def __init__(self, port, localPort):
         self.parser = optparse.OptionParser()
@@ -91,21 +95,15 @@ class Logger():
         Set up a file for writing a log into it.
         If not called, log is written to STDOUT.
         '''
-        try:
-            self._logFile = open(filename, 'w')
-        except:
-            raise
+        self._logFile = open(filename, 'w')
 
     def closeLog(self):
         '''
         Try to close a possibly open log file.
         '''
         if self._logFile is not None:
-            try:
-                self._logFile.close()
-                self._logFile = None
-            except:
-                raise
+            self._logFile.close()
+            self._logFile = None
 
     def log(self, who, what):
         '''
@@ -170,7 +168,7 @@ class ProxyProtocol(protocol.Protocol):
 
     def connectionLost(self, reason):
         '''
-        Either end of the proxy received a dosconnect.
+        Either end of the proxy received a disconnect.
         '''
         if self.origin == 'server':
             sys.stderr.write('Disconnected from real server.\n')
@@ -222,6 +220,12 @@ class ProxyServer(ProxyProtocol):
     '''
     Server part of the MITM proxy.
     '''
+    def __init__(self):
+        # proxy server initialized, connect to real server
+        sys.stderr.write(
+            'Connecting to %s:%d...\n' % (self.host, self.port))
+        self.connectToServer()
+
     def connectToServer(self):
         '''
         Example:
@@ -230,57 +234,37 @@ class ProxyServer(ProxyProtocol):
             reactor.connect[PROTOCOL](
                 self.host, self.port, factory [, OTHER_OPTIONS])
         '''
-        raise Exception('You should implement this method in your code.')
+        raise MITMException('You should implement this method in your code.')
 
     def connectionMade(self):
         '''
         Unsuspecting client connected to our fake server. *evil grin*
         '''
-        self.origin = self.factory.origin
-        self.host = self.factory.host
-        self.port = self.factory.port
-        self.log = self.factory.log
-        # input - data from the real client
-        self.rx = self.factory.cq
-        # output - data to the real server
-        self.tx = self.factory.sq
-
-        # callback for the receiver queue
+        # add callback for the receiver queue
         self.rx.get().addCallback(self.proxyDataReceived)
-
         sys.stderr.write('Client connected.\n')
-        sys.stderr.write(
-            'Connecting to %s:%d...\n' % (self.host, self.port))
-
-        # now connect to the real server and begin proxying...
-        self.connectToServer()
 
 
 class ProxyServerFactory(protocol.ServerFactory):
     def __init__(self, protocol, host, port, log):
         self.protocol = protocol
         # which side we're talking to?
-        self.origin = "client"
-        self.host = host
-        self.port = port
-        self.log = log
-        self.sq = defer.DeferredQueue()
-        self.cq = defer.DeferredQueue()
+        self.protocol.origin = "client"
+        self.protocol.host = host
+        self.protocol.port = port
+        self.protocol.log = log
+        self.protocol.rx = defer.DeferredQueue()
+        self.protocol.tx = defer.DeferredQueue()
 
 
 class ReplayServer(protocol.Protocol):
     def connectionMade(self):
-        self.log = self.factory.log
-        self.sq = self.factory.sq
-        self.cq = self.factory.cq
-        self.delayMod = self.factory.delayMod
-        self.success = False
-
         sys.stderr.write('Client connected.\n')
+        self.sendNext()
 
     def sendNext(self):
         '''
-        Called after we've received data from the client.
+        Called after the client connects.
         We shall send (with a delay) all the messages
         from our queue until encountering either None or
         an exception. In case a reply is not expected from
@@ -289,25 +273,15 @@ class ReplayServer(protocol.Protocol):
         we're supposed to send a reply) - so we just "eat"
         the None from head of our queue (sq).
         '''
-        try:
-            reply = self.sq.get(False)
-        except:
-            # expect the unexpected
-            raise
-
-        while reply is not None:
-            (delay, what) = reply
-            self.log.log('server', what)
-            # sleep for a while (read from proxy log),
-            # modified by delayMod
-            time.sleep(delay * self.delayMod)
-            self.transport.write(what.decode('hex'))
+        while True:
             try:
                 # gets either:
                 #  * a message - continue while loop (send the message)
                 #  * None - break from the loop (client talks next)
                 #  * Empty exception - close the session
                 reply = self.sq.get(False)
+                if reply is None:
+                    break
             except Queue.Empty:
                 # both cq and sq empty -> close the session
                 sys.stderr.write('Success.\n')
@@ -315,9 +289,13 @@ class ReplayServer(protocol.Protocol):
                 self.log.closeLog()
                 self.transport.loseConnection()
                 break
-            except:
-                # no idea what just happened
-                raise
+
+            (delay, what) = reply
+            self.log.log('server', what)
+            # sleep for a while (read from proxy log),
+            # modified by delayMod
+            time.sleep(delay * self.delayMod)
+            self.transport.write(what.decode('hex'))
 
     def dataReceived(self, data):
         '''
@@ -329,7 +307,7 @@ class ReplayServer(protocol.Protocol):
         try:
             expected = self.cq.get(False)
         except Queue.Empty:
-            raise Exception("Nothing more expected in this session.")
+            raise MITMException("Nothing more expected in this session.")
 
         exp_hex = expected[1]
         got_hex = data.encode('hex')
@@ -338,10 +316,14 @@ class ReplayServer(protocol.Protocol):
             self.log.log('client', expected[1])
             self.sendNext()
         else:
+            # received something else, terminate
             sys.stderr.write(
                 "ERROR: Expected %s (%s), got %s (%s).\n"
                 % (exp_hex, exp_hex.decode('hex').translate(filter),
                     got_hex, got_hex.decode('hex').translate(filter)))
+            self.log.closeLog()
+            if reactor.running:
+              reactor.stop()
 
     def connectionLost(self, reason):
         '''
@@ -351,17 +333,20 @@ class ReplayServer(protocol.Protocol):
             sys.stderr.write('FAIL! Premature end: not all messages sent.\n')
         sys.stderr.write('Client disconnected.\n')
         self.log.closeLog()
-        reactor.stop()
+        if reactor.running:
+            reactor.stop()
 
 
 class ReplayServerFactory(protocol.ServerFactory):
     protocol = ReplayServer
 
-    def __init__(self, log, sq, cq, delayMod):
-        self.log = log
-        self.sq = sq
-        self.cq = cq
-        self.delayMod = delayMod
+    def __init__(self, log, sq, cq, delayMod, clientFirst):
+        self.protocol.log = log
+        self.protocol.sq = sq
+        self.protocol.cq = cq
+        self.protocol.delayMod = delayMod
+        self.protocol.clientFirst = clientFirst
+        self.protocol.success = False
 
 
 class LogReader():
@@ -371,13 +356,21 @@ class LogReader():
     other containing the replies that should be sent
     to the client.
     '''
-    def __init__(self, inputFile, sq, cq):
+    def __init__(self, inputFile, sq, cq, clientFirst):
         with open(inputFile) as inFile:
             lastTime = 0
             for line in inFile:
                 # optional fourth field contains comments,
                 # usually an ASCII representation of the data
                 (timestamp, who, what, _) = line.rstrip('\n').split('\t')
+
+                # if this is the first line of log, determine who said it
+                if clientFirst is None:
+                    if who == "client":
+                        clientFirst = True
+                    else:
+                        clientFirst = False
+
                 # strip the pretty-print "0x" prefix from hex data
                 what = what[2:]
                 # compute the time between current and previous msg
@@ -396,10 +389,7 @@ class LogReader():
                     # expected client messages
                     cq.put([delay, what])
                 else:
-                    raise Exception('Malformed proxy log!')
-
-        # get rid of first sync mark (client ALWAYS talks first)
-        sq.get(False)
+                    raise MITMException('Malformed proxy log!')
 
 
 class LogViewer():

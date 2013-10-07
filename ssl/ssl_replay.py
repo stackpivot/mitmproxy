@@ -2,9 +2,6 @@
 '''
 Replay server for SSL-encrytped raw TCP connections running over port 443.
 See --help for usage.
-
-Assumptions:
-  * client ALWAYS talks first (sends ClientHello message)
 '''
 
 from twisted.internet import reactor
@@ -28,13 +25,14 @@ def main():
 
         sq = Queue.Queue()
         cq = Queue.Queue()
+        clientFirst = None
 
-        mitmproxy.LogReader(parsed.opts.inputFile, sq, cq)
+        mitmproxy.LogReader(parsed.opts.inputFile, sq, cq, clientFirst)
 
         sys.stderr.write(
             'Server running on localhost:%d\n' % parsed.opts.localPort)
         factory = mitmproxy.ReplayServerFactory(
-            log, sq, cq, parsed.opts.delayMod)
+            log, sq, cq, parsed.opts.delayMod, clientFirst)
         reactor.listenTCP(parsed.opts.localPort, factory)
         reactor.run()
 
