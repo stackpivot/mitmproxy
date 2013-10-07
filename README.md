@@ -12,6 +12,12 @@ License
 -------
 Distributed under the GNU General Public License version 2 (GPLv2).
 
+
+Dependencies
+------------
+* Python 2.7
+* Twisted Python library (python-twisted)
+
 Motivation
 ----------
 Created as a debugging tool for various enterprise fencing agents that tend
