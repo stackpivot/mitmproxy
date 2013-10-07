@@ -323,7 +323,7 @@ class ReplayServer(protocol.Protocol):
                     got_hex, got_hex.decode('hex').translate(filter)))
             self.log.closeLog()
             if reactor.running:
-              reactor.stop()
+                reactor.stop()
 
     def connectionLost(self, reason):
         '''
