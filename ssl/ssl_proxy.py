@@ -10,29 +10,41 @@ import sys
 sys.path.append('../lib')
 import mitmproxy
 
+# disable reporting of bogus "no-member" errors
+# pylint: disable=E1101
+
 
 class ProxyServer(mitmproxy.ProxyServer):
-    def connectToServer(self):
+    '''
+    ProxyServer with implemented connect procedure
+    '''
+    def connect_to_server(self):
+        '''
+        Connect over SSL-encrypted raw socket
+        '''
         factory = mitmproxy.ProxyClientFactory(
-            self.tx, self.rx, self.log)
+            self.transmit, self.receive, self.log)
         reactor.connectSSL(
             self.host, self.port, factory, ssl.ClientContextFactory())
 
 
 def main():
-    parsed = mitmproxy.ProxyOptionParser(443, 4443)
+    '''
+    Parse options, open log and start proxy server
+    '''
+    (opts, _) = mitmproxy.proxy_option_parser(443, 4443)
 
     log = mitmproxy.Logger()
-    if parsed.opts.logFile is not None:
-        log.openLog(parsed.opts.logFile)
+    if opts.logfile is not None:
+        log.open_log(opts.logfile)
 
     sys.stderr.write(
-        'Server running on localhost:%d...\n' % parsed.opts.localPort)
+        'Server running on localhost:%d...\n' % opts.localport)
 
     factory = mitmproxy.ProxyServerFactory(
-        ProxyServer, parsed.opts.host, parsed.opts.port, log)
+        ProxyServer, opts.host, opts.port, log)
     reactor.listenSSL(
-        parsed.opts.localPort, factory, ssl.DefaultOpenSSLContextFactory(
+        opts.localPort, factory, ssl.DefaultOpenSSLContextFactory(
             'keys/server.key', 'keys/server.crt'))
     reactor.run()
 

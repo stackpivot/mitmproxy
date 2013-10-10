@@ -12,7 +12,6 @@ License
 -------
 Distributed under the GNU General Public License version 2 (GPLv2).
 
-
 Dependencies
 ------------
 * Python 2.7
