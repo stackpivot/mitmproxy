@@ -11,19 +11,19 @@ sys.path.append('../lib')
 import mitmproxy
 
 def main():
-    parsed = mitmproxy.ProxyOptionParser(22, 2222)
+    opts, args = mitmproxy.proxy_option_parser(22, 2222)
 
     log = mitmproxy.Logger()
-    if parsed.opts.logFile is not None:
-        log.openLog(parsed.opts.logFile)
+    if opts.logfile is not None:
+        log.open_log(opts.logfile)
 
     sys.stderr.write(
-        'Server running on localhost:%d...\n' % (parsed.opts.localPort))
+        'Server running on localhost:%d...\n' % (opts.localport))
 
     factory = mitmproxy.SSHServerFactory(mitmproxy.SSHServerTransport,
-                                         parsed.opts.host, parsed.opts.port,
+                                         opts.host, opts.port,
                                          log)
-    reactor.listenTCP(parsed.opts.localPort, factory)
+    reactor.listenTCP(opts.localport, factory)
     reactor.run()
 
 

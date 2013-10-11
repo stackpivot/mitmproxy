@@ -13,27 +13,30 @@ import mitmproxy
 
 
 def main():
-    parsed = mitmproxy.ReplayOptionParser(4443)
+    '''
+    Parse options, open and read log file, start replay server
+    '''
+    (opts, _) = mitmproxy.replay_option_parser(4443)
 
-    if parsed.opts.inputFile is None:
+    if opts.inputfile is None:
         print "Need to specify an input file."
         sys.exit(1)
     else:
         log = mitmproxy.Logger()
-        if parsed.opts.logFile is not None:
-            log.openLog(parsed.opts.logFile)
+        if opts.logfile is not None:
+            log.open_log(opts.logfile)
 
-        sq = Queue.Queue()
-        cq = Queue.Queue()
-        clientFirst = None
+        serverq = Queue.Queue()
+        clientq = Queue.Queue()
+        clientfirst = None
 
-        mitmproxy.LogReader(parsed.opts.inputFile, sq, cq, clientFirst)
+        mitmproxy.logreader(opts.inputfile, serverq, clientq, clientfirst)
 
         sys.stderr.write(
-            'Server running on localhost:%d\n' % parsed.opts.localPort)
+            'Server running on localhost:%d\n' % opts.localport)
         factory = mitmproxy.ReplayServerFactory(
-            log, sq, cq, parsed.opts.delayMod, clientFirst)
-        reactor.listenTCP(parsed.opts.localPort, factory)
+            log, (serverq, clientq), opts.delaymod, clientfirst)
+        reactor.listenTCP(opts.localport, factory)
         reactor.run()
 
 

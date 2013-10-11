@@ -10,27 +10,39 @@ import sys
 sys.path.append('../lib')
 import mitmproxy
 
+# disable reporting of bogus "no-member" errors
+# pylint: disable=E1101
+
 
 class ProxyServer(mitmproxy.ProxyServer):
-    def connectToServer(self):
+    '''
+    ProxyServer with implemented connect procedure
+    '''
+    def connect_to_server(self):
+        '''
+        Connect over raw TCP
+        '''
         factory = mitmproxy.ProxyClientFactory(
-            self.tx, self.rx, self.log)
+            self.transmit, self.receive, self.log)
         reactor.connectTCP(self.host, self.port, factory)
 
 
 def main():
-    parsed = mitmproxy.ProxyOptionParser(23, 2323)
+    '''
+    Parse options, open log and start proxy server
+    '''
+    (opts, _) = mitmproxy.proxy_option_parser(23, 2323)
 
     log = mitmproxy.Logger()
-    if parsed.opts.logFile is not None:
-        log.openLog(parsed.opts.logFile)
+    if opts.logfile is not None:
+        log.open_log(opts.logfile)
 
     sys.stderr.write(
-        'Server running on localhost:%d...\n' % (parsed.opts.localPort))
+        'Server running on localhost:%d...\n' % (opts.localport))
 
     factory = mitmproxy.ProxyServerFactory(
-        ProxyServer, parsed.opts.host, parsed.opts.port, log)
-    reactor.listenTCP(parsed.opts.localPort, factory)
+        ProxyServer, opts.host, opts.port, log)
+    reactor.listenTCP(opts.localport, factory)
     reactor.run()
 
 
