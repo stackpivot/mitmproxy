@@ -500,7 +500,8 @@ class SSHServerFactory(factory.SSHFactory):
 
         if not (os.path.exists('keys/id_rsa.pub')
                 and os.path.exists('keys/id_rsa')):
-            raise MITMException("Private/public eypair not generated in the keys directory.")
+            raise MITMException(
+                "Private/public eypair not generated in the keys directory.")
 
         self.privateKeys = {
             'ssh-rsa': keys.Key.fromFile('keys/id_rsa')
@@ -617,7 +618,7 @@ class Realm(object):
     implements(portal.IRealm)
 
     def requestAvatar(self, avatarId, mind, *interfaces):
-            return interfaces[0], EavesdroppedUser(avatarId), lambda: None
+        return interfaces[0], EavesdroppedUser(avatarId), lambda: None
 
 
 class EavesdroppedUser(avatar.ConchUser):
@@ -803,7 +804,6 @@ class SSHClientTransport(transport.SSHClientTransport):
             self.sendPacket(ord(data[0]), data[1:])
             self.receive.get().addCallback(self._cbProxyDataReceived)
         else:
-            pass
             # got some data to be sent, but we no longer
             # have a connection to the other side
             sys.stderr.write(
@@ -822,12 +822,14 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
 
     def getPublicKey(self):
         if not (os.path.exists('keys/id_rsa.pub')):
-            raise MITMException("Public/private keypair not generated in the keys directory.")
+            raise MITMException(
+                "Public/private keypair not generated in the keys directory.")
         return keys.Key.fromFile('keys/id_rsa.pub').blob()
 
     def getPrivateKey(self):
         if not (os.path.exists('keys/id_rsa')):
-            raise MITMException("Public/private keypair not generated in the keys directory.")
+            raise MITMException(
+                "Public/private keypair not generated in the keys directory.")
         return defer.succeed(keys.Key.fromFile('keys/id_rsa').keyObject)
 
 
