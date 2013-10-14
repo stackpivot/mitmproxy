@@ -6,7 +6,7 @@ Supported protocols:
   * Telnet
   * HTTP
   * SSL
-  * SSH - soon
+  * SSH - WIP
 
 License
 -------
