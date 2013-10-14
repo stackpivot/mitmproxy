@@ -517,6 +517,17 @@ class SSHServerFactory(factory.SSHFactory):
         self.portal = portal.Portal(Realm())
         self.portal.registerChecker(PublicKeyCredentialsChecker(self))
 
+    def getPublicKeys(self):
+        '''
+        Already done in init
+        '''
+        pass
+
+    def getPrivateKeys(self):
+        '''
+        Already done in init
+        '''
+        pass
 
 
 class SSHServerTransport(transport.SSHServerTransport):
@@ -526,6 +537,12 @@ class SSHServerTransport(transport.SSHServerTransport):
     '''
     # TODO: This class has only slight difference from client ssh transport
     # protocol layer. This subclass is better createid with some factory method.
+    def __init__(self):
+        '''
+        Nothing to do.
+        '''
+        pass
+
     def connectionMade(self):
         '''
         Calls parent method after establishing connection
@@ -581,9 +598,9 @@ class SSHServerTransport(transport.SSHServerTransport):
 
         if messageType == 52:
             # SSH_MSG_USERAUTH_SUCCESS
-            self.receive.get().addCallback(self._cb_proxy_data_received)
+            self.receive.get().addCallback(self.proxy_data_received)
 
-    def _cb_proxy_data_received(self, data):
+    def proxy_data_received(self, data):
         '''
         Callback function for both client and server side of the proxy.
         Each side specifies its input (receive) and output (transmit) queues.
@@ -599,7 +616,7 @@ class SSHServerTransport(transport.SSHServerTransport):
             # Transmit queue is defined => connection to
             # the other side is still open, we can send data to it.
             self.sendPacket(ord(data[0]), data[1:])
-            self.receive.get().addCallback(self._cb_proxy_data_received)
+            self.receive.get().addCallback(self.proxy_data_received)
         else:
             # got some data to be sent, but we no longer
             # have a connection to the other side
@@ -617,21 +634,24 @@ class Realm(object):
 
     Realm connects our service and authentication methods.
     '''
-    # NOTE: This class will be useless, if we subclass porta.Portal.
+    # NOTE: This class will be useless, if we subclass portal.Portal.
     implements(portal.IRealm)
 
     def requestAvatar(self, avatarId, mind, *interfaces):
-        """
+        '''
         Return object which provides one of the given interfaces.
-        """
+        '''
+        # ignore 'unused-argument' warning
+        # pylint: disable=W0613
         return interfaces[0], EavesdroppedUser(avatarId), lambda: None
+        # pylint: enable=W0613
 
 
 class EavesdroppedUser(avatar.ConchUser):
     '''
-    Provides service for concrete user.
+    Avatar provider for MITM'd user
     '''
-    # NOTE: This class will be useless, if we subclass porta.Portal.
+    # NOTE: This class will be useless, if we subclass portal.Portal.
     def __init__(self, username):
         avatar.ConchUser.__init__(self)
 
@@ -658,13 +678,13 @@ class PublicKeyCredentialsChecker:
         '''
         Set a callback for user auth success
         '''
-        tmp_deferred = self.receive.get().addCallback(self._cb_is_auth_success,
+        tmp_deferred = self.receive.get().addCallback(self.is_auth_success,
                 credentials.username)
-        self.connectToServer(credentials.username)
+        self.connect_to_server(credentials.username)
 
         return tmp_deferred
 
-    def _cb_is_auth_success(self, result, avatarId):
+    def is_auth_success(self, result, avatarId):
         '''
         Check authentication result from proxy client.
         '''
@@ -675,7 +695,7 @@ class PublicKeyCredentialsChecker:
             raise python.failure.Failure(
                 error.ConchError("Authorization Failed"))
 
-    def connectToServer(self, username):
+    def connect_to_server(self, username):
         '''
         Start mitm proxy client.
         '''
@@ -683,8 +703,8 @@ class PublicKeyCredentialsChecker:
             'Connecting to %s:%d...\n' % (self.host, self.port))
 
         # now connect to the real server and begin proxying...
-        client_factory = SSHClientFactory(SSHClientTransport, self.serverq,
-                                          self.clientq, self.log, username)
+        client_factory = SSHClientFactory(
+            SSHClientTransport, self.serverq, self.clientq, self.log, username)
         client_factory.connection = self.connection
         reactor.connectTCP(self.host, self.port, client_factory)
 
@@ -723,6 +743,12 @@ class SSHClientTransport(transport.SSHClientTransport):
     # TODO: This class has only slight difference from server ssh transport
     # protocol layer. This subclass is better created by some factory
     # method.
+    def __init__(self):
+        '''
+        Nothing to do
+        '''
+        pass
+
     def connectionMade(self):
         '''
         Call parent method fter enstablishing connection and set some
@@ -731,14 +757,14 @@ class SSHClientTransport(transport.SSHClientTransport):
         self.connection = self.factory.connection
         self.username = self.factory.username
         self.origin = self.factory.origin
-        # input - data from the real client
+        # input - data from the real server
         self.receive = self.factory.serverq
-        # output - data for the real server
+        # output - data for the real client
         self.transmit = self.factory.clientq
         self.log = self.factory.log
 
         # callback for the receiver queue
-        self.receive.get().addCallback(self._cb_proxy_data_received)
+        self.receive.get().addCallback(self.proxy_data_received)
 
         transport.SSHClientTransport.connectionMade(self)
         sys.stderr.write('Connected to real server.\n')
@@ -790,9 +816,10 @@ class SSHClientTransport(transport.SSHClientTransport):
         As we're acting as a passthrogh, we can safely leave this
         up to the client.
         '''
-        python.log.msg("Don't care about server host key verification. Key is"
-                       "%s" % (pubKey))
+        # ignore 'unused-argument' warning
+        # pylint: disable=W0613
         return defer.succeed(1)
+        # pylint: enable=W0613
 
     def connectionSecure(self):
         '''
@@ -801,7 +828,7 @@ class SSHClientTransport(transport.SSHClientTransport):
         self.requestService(ProxySSHUserAuthClient(self.username,
                                                    self.connection()))
 
-    def _cb_proxy_data_received(self, data):
+    def proxy_data_received(self, data):
         '''
         Callback function for both client and server side of the proxy.
         Each side specifies its input (receive) and output (transmit) queues.
@@ -817,7 +844,7 @@ class SSHClientTransport(transport.SSHClientTransport):
             # Transmit queue is defined => connection to
             # the other side is still open, we can send data to it.
             self.sendPacket(ord(data[0]), data[1:])
-            self.receive.get().addCallback(self._cb_proxy_data_received)
+            self.receive.get().addCallback(self.proxy_data_received)
         else:
             # got some data to be sent, but we no longer
             # have a connection to the other side
@@ -834,7 +861,7 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
     Implements client side of 'ssh-userauth'.
     '''
     def getPassword(self, prompt = None):
-        # we won't do password authentication XXX: why?
+        # we won't do password authentication
         # TODO: implement me maybe?
         return
 
@@ -874,4 +901,3 @@ class ProxySSHConnection(connection.SSHConnection):
         if ord(payload[0]) == 94:
             # SSH_MSG_CHANNEL_DATA
             self.transport.log.log(self.transport.origin, payload.encode('hex'))
-
