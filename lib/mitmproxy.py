@@ -481,8 +481,8 @@ class SSHServerFactory(factory.SSHFactory):
     '''
     Factory class for proxy SSH server.
 
-    If you want implement your own logger of SSH Connection layer, you subclass
-    ProxySSHConnection class and override logChannelCommunication() method.
+    If you want to implement your own logger of SSH Connection layer, subclass
+    ProxySSHConnection and override logChannelCommunication() method.
     Then set factory atribute after factory creation.
     Example:
         factory.connection = SubclassProxySSHConnection
@@ -495,18 +495,18 @@ class SSHServerFactory(factory.SSHFactory):
         self.host = host
         self.port = port
         self.log = log
-        self.sq = defer.DeferredQueue()
-        self.cq = defer.DeferredQueue()
+        self.serverq = defer.DeferredQueue()
+        self.clientq = defer.DeferredQueue()
 
-        if not (os.path.exists('keys/proxy.pub')
-                and os.path.exists('keys/proxy')):
-            raise MITMException("Keys is not generated in keys directory.")
+        if not (os.path.exists('keys/id_rsa.pub')
+                and os.path.exists('keys/id_rsa')):
+            raise MITMException("Private/public eypair not generated in the keys directory.")
 
         self.privateKeys = {
-            'ssh-rsa': keys.Key.fromFile('keys/proxy')
+            'ssh-rsa': keys.Key.fromFile('keys/id_rsa')
         }
         self.publicKeys = {
-            'ssh-rsa': keys.Key.fromFile('keys/proxy.pub')
+            'ssh-rsa': keys.Key.fromFile('keys/id_rsa.pub')
         }
 
         self.services = {
@@ -524,22 +524,21 @@ class SSHServerTransport(transport.SSHServerTransport):
     SSH proxy server protocol. Subclass of SSH transport protocol layer
     representation for servers.
     '''
-    # TODO: This class has only slightly difference from client ssh transport
-    # protocol layer. This subclass is better to create with some factory
-    # method.
+    # TODO: This class has only slight difference from client ssh transport
+    # protocol layer. This subclass is better createid with some factory method.
     def connectionMade(self):
         '''
-        After enstablished connection calls parent method and set some
-        attributes.
+        Calls parent method after establishing connection
+        and sets some attributes.
         '''
         self.origin = self.factory.origin
         self.host = self.factory.host
         self.port = self.factory.port
         self.log = self.factory.log
-        # input - data from the real server
-        self.rx = self.factory.cq
-        # output - data for the real client
-        self.tx = self.factory.sq
+        # input - data from the real server XXX: really?
+        self.receive = self.factory.clientq
+        # output - data for the real client XXX: really?
+        self.transmit = self.factory.serverq
 
         transport.SSHServerTransport.connectionMade(self)
         sys.stderr.write('Client connected.\n')
@@ -554,12 +553,11 @@ class SSHServerTransport(transport.SSHServerTransport):
             sys.stderr.write('Client disconnected.\n')
         self.log.close_log()
         # destroy the receive queue
-        self.rx = None
+        self.receive = None
         # put a special value into tx queue to indicate connecion loss
-        self.tx.put(False)
+        self.transmit.put(False)
         # stop the program
-        if reactor.running:
-            reactor.stop()
+        terminate()
 
     def dispatchMessage(self, messageNum, payload):
         '''
@@ -574,30 +572,30 @@ class SSHServerTransport(transport.SSHServerTransport):
     def sendPacket(self, messageType, payload):
         '''
         Extending internal logging and set message dispatching between proxy
-        components if client successfully authenticate.
+        components if client successfully authenticated.
         '''
         transport.SSHServerTransport.sendPacket(self, messageType, payload)
 
-        python.log.msg("Sended message (%s) to %s with payload: %s " % (
+        python.log.msg("Sent message (%s) to %s with payload: %s " % (
             messageType, self.origin, payload.encode('string_escape')))
 
         if messageType == 52:
             # SSH_MSG_USERAUTH_SUCCESS
-            self.rx.get().addCallback(self._cbProxyDataReceived)
+            self.receive.get().addCallback(self._cbProxyDataReceived)
 
     def _cbProxyDataReceived(self, data):
         if data is False:
             # Special value indicating that one side of our proxy
             # no longer has an open connection. So we close the
             # other end.
-            self.rx = None
+            self.receive = None
             self.transport.loseConnection()
             # the reactor should be stopping just about now
-        elif self.tx is not None:
+        elif self.transmit is not None:
             # Transmit queue is defined => connection to
             # the other side is still open, we can send data to it.
             self.sendPacket(ord(data[0]), data[1:])
-            self.rx.get().addCallback(self._cbProxyDataReceived)
+            self.receive.get().addCallback(self._cbProxyDataReceived)
         else:
             # got some data to be sent, but we no longer
             # have a connection to the other side
@@ -640,16 +638,17 @@ class PublicKeyCredentialsChecker:
     def __init__(self, factory):
         self.host = factory.host
         self.port = factory.port
-        self.sq = factory.sq
-        self.cq = factory.cq
+        self.serverq = factory.serverq
+        self.clientq = factory.clientq
         self.log = factory.log
         self.connection = factory.connection
-        self.rx = self.cq
+        self.receive = self.clientq
 
     def requestAvatarId(self, credentials):
-        # If client authenticate successfully, our proxy client tell us,
-        # because we set callback.
-        d = self.rx.get().addCallback(self._cbIsAuthSuccess,
+        '''
+        Set a callback for user auth success
+        '''
+        d = self.receive.get().addCallback(self._cbIsAuthSuccess,
                 credentials.username)
         self.connectToServer(credentials.username)
 
@@ -657,25 +656,25 @@ class PublicKeyCredentialsChecker:
 
     def _cbIsAuthSuccess(self, result, avatarId):
         '''
-        Checks authentication result from proxy client.
+        Check authentication result from proxy client.
         '''
         if result:
             return avatarId
         else:
-            # We let proxy server to know, that it must disconnect client.
+            # let proxy server know that it should disconnect client
             raise python.failure.Failure(
                 error.ConchError("Authorization Failed"))
 
     def connectToServer(self, username):
         '''
-        Starts our proxy client.
+        Start mitm proxy client.
         '''
         sys.stderr.write(
             'Connecting to %s:%d...\n' % (self.host, self.port))
 
         # now connect to the real server and begin proxying...
-        factory = SSHClientFactory(SSHClientTransport, self.sq,
-                                   self.cq, self.log, username)
+        factory = SSHClientFactory(SSHClientTransport, self.serverq,
+                                   self.clientq, self.log, username)
         factory.connection = self.connection
         reactor.connectTCP(self.host, self.port, factory)
 
@@ -688,12 +687,12 @@ class SSHClientFactory(protocol.ClientFactory):
     '''
     # TODO: Change this. We can use normal client factory for TCP.
 
-    def __init__(self, protocol, sq, cq, log, username):
+    def __init__(self, protocol, serverq, clientq, log, username):
         # which side we're talking to?
         self.origin = 'server'
         self.protocol = protocol
-        self.sq = sq
-        self.cq = cq
+        self.serverq = serverq
+        self.clientq = clientq
         self.log = log
         self.username = username
 
@@ -702,7 +701,7 @@ class SSHClientFactory(protocol.ClientFactory):
         self.connection = ProxySSHConnection
 
     def clientConnectionFailed(self, connector, reason):
-        self.cq.put(False)
+        self.clientq.put(False)
         sys.stderr.write('Unable to connect! %s\n' % reason.getErrorMessage())
 
 
@@ -711,25 +710,25 @@ class SSHClientTransport(transport.SSHClientTransport):
     SSH proxy client protocol. Subclass of SSH transport protocol layer
     representation for clients.
     '''
-    # TODO: This class has only slightly difference from server ssh transport
-    # protocol layer. This subclass is better to create with some factory
+    # TODO: This class has only slight difference from server ssh transport
+    # protocol layer. This subclass is better created by some factory
     # method.
     def connectionMade(self):
         '''
-        After enstablished connection calls parent method and set some
+        Call parent method fter enstablishing connection and set some
         attributes and callback.
         '''
         self.connection = self.factory.connection
         self.username = self.factory.username
         self.origin = self.factory.origin
-        # input - data from the real server
-        self.rx = self.factory.sq
-        # output - data for the real client
-        self.tx = self.factory.cq
+        # input - data from the real server XXX: really?
+        self.receive = self.factory.serverq
+        # output - data for the real client XXX: really?
+        self.transmit = self.factory.clientq
         self.log = self.factory.log
 
         # callback for the receiver queue
-        self.rx.get().addCallback(self._cbProxyDataReceived)
+        self.receive.get().addCallback(self._cbProxyDataReceived)
 
         transport.SSHClientTransport.connectionMade(self)
         sys.stderr.write('Connected to real server.\n')
@@ -744,17 +743,16 @@ class SSHClientTransport(transport.SSHClientTransport):
             sys.stderr.write('Client disconnected.\n')
         self.log.close_log()
         # destroy the receive queue
-        self.rx = None
+        self.receive = None
         # put a special value into tx queue to indicate connecion loss
-        self.tx.put(False)
+        self.transmit.put(False)
         # stop the program
-        if reactor.running:
-            reactor.stop()
+        terminate()
 
     def dispatchMessage(self, messageNum, payload):
         '''
         In parent method packets are distinguished and dispatched to message
-        processing methods. Added logging and checkings original client against
+        processing methods. Added logging and checking original client against
         proxy server.
         '''
         transport.SSHClientTransport.dispatchMessage(self, messageNum, payload)
@@ -762,10 +760,10 @@ class SSHClientTransport(transport.SSHClientTransport):
         python.log.msg("Received message (%s) from %s with payload: %s " % (
             messageNum, self.origin, payload.encode('string_escape')))
 
-        # We'll let the proxy server know about success authentication
+        # We'll let the proxy server know about auth success
         if messageNum == 52:
             # SSH_MSG_USERAUTH_SUCCESS
-            self.tx.put(True)
+            self.transmit.put(True)
 
     def sendPacket(self, messageType, payload):
         '''
@@ -773,19 +771,20 @@ class SSHClientTransport(transport.SSHClientTransport):
         '''
         transport.SSHClientTransport.sendPacket(self, messageType, payload)
 
-        python.log.msg("Sended message (%s) to %s with payload: %s " % (
+        python.log.msg("Sent message (%s) to %s with payload: %s " % (
             messageType, self.origin, payload.encode('string_escape')))
 
     def verifyHostKey(self, pubKey, fingerprint):
         '''
-        Required implementation of verifying server host key. You don't need
-        special check in testing enviroment, so returns success.
+        Required implementation of server host key verification.
+        As we're acting as a passthrogh, we can safely leave this
+        up to the client.
         '''
         return defer.succeed(1)
 
     def connectionSecure(self):
         '''
-        Required implementation of call to run another service.
+        Required implementation of a call to run another service.
         '''
         self.requestService(ProxySSHUserAuthClient(self.username,
                                                    self.connection()))
@@ -795,14 +794,14 @@ class SSHClientTransport(transport.SSHClientTransport):
             # Special value indicating that one side of our proxy
             # no longer has an open connection. So we close the
             # other end.
-            self.rx = None
+            self.receive = None
             self.transport.loseConnection()
             # the reactor should be stopping just about now
-        elif self.tx is not None:
+        elif self.transmit is not None:
             # Transmit queue is defined => connection to
             # the other side is still open, we can send data to it.
             self.sendPacket(ord(data[0]), data[1:])
-            self.rx.get().addCallback(self._cbProxyDataReceived)
+            self.receive.get().addCallback(self._cbProxyDataReceived)
         else:
             pass
             # got some data to be sent, but we no longer
@@ -817,32 +816,33 @@ class SSHClientTransport(transport.SSHClientTransport):
 
 class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
     def getPassword(self, prompt = None):
-        # we won't do password authentication
+        # we won't do password authentication XXX: why?
+        # TODO: implement me maybe?
         return
 
     def getPublicKey(self):
-        if not (os.path.exists('keys/client.pub')):
-            raise MITMException("Keys is not generated in keys directory.")
-        return keys.Key.fromFile('keys/client.pub').blob()
+        if not (os.path.exists('keys/id_rsa.pub')):
+            raise MITMException("Public/private keypair not generated in the keys directory.")
+        return keys.Key.fromFile('keys/id_rsa.pub').blob()
 
     def getPrivateKey(self):
-        if not (os.path.exists('keys/client')):
-            raise MITMException("Keys is not generated in keys directory.")
-        return defer.succeed(keys.Key.fromFile('keys/client').keyObject)
+        if not (os.path.exists('keys/id_rsa')):
+            raise MITMException("Public/private keypair not generated in the keys directory.")
+        return defer.succeed(keys.Key.fromFile('keys/id_rsa').keyObject)
 
 
-# common for SHH server and client
+# common to both SSH server and client
 
 class ProxySSHConnection(connection.SSHConnection):
     '''
     Overrides regular SSH connection protocol layer.
 
     Dispatches packets between proxy componets (server/client part) instead of
-    message processing and perform channel communication logging.
+    message processing and performs channel communication logging.
     '''
     def packetReceived(self, messageNum, packet):
         self.logChannelCommunication(chr(messageNum) + packet)
-        self.transport.tx.put(chr(messageNum) + packet)
+        self.transport.transmit.put(chr(messageNum) + packet)
 
     def logChannelCommunication(self, payload):
         '''

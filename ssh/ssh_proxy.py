@@ -11,7 +11,7 @@ sys.path.append('../lib')
 import mitmproxy
 
 def main():
-    opts, args = mitmproxy.proxy_option_parser(22, 2222)
+    (opts, _) = mitmproxy.proxy_option_parser(22, 2222)
 
     log = mitmproxy.Logger()
     if opts.logfile is not None:

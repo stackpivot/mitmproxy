@@ -1,9 +1,7 @@
 #!/usr/bin/bash
-
-echo ">>>Generating proxy and client key pairs..."
-
-ssh-keygen -q -N "" -C proxy@mitm -f ./proxy
-ssh-keygen -q -N "" -C client@mitm -f ./client
-
-echo ">>>Keys proxy, proxy.pub, client, client.pub was created."
-echo ">>>Done."
+ssh-keygen -f ./id_rsa
+if [ $? -eq 0 ] ; then
+  echo "Keypair successfully generated."
+else
+  echo "Something went wrong..."
+fi

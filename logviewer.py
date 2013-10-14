@@ -11,13 +11,16 @@ import mitmproxy
 
 
 def main():
-    parsed = mitmproxy.ViewerOptionParser()
+    '''
+    Call the log viewer
+    '''
+    (opts, _) = mitmproxy.viewer_option_parser()
 
-    if parsed.opts.inputFile is None:
+    if opts.inputfile is None:
         print "Need to specify an input file."
         sys.exit(1)
     else:
-        mitmproxy.LogViewer(parsed.opts.inputFile, parsed.opts.delayMod)
+        mitmproxy.logviewer(opts.inputfile, opts.delaymod)
 
 
 if __name__ == "__main__":
