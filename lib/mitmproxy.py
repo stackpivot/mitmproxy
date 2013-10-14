@@ -486,11 +486,13 @@ class SSHServerFactory(factory.SSHFactory):
     Example:
         factory.connection = SubclassProxySSHConnection
     '''
-    def __init__(self, protocol, host, port, log):
+    # ignore 'too-many-instance-attributes'
+    # pylint: disable=R0902
+    def __init__(self, proto, host, port, log):
         # Default is our ProxySSHConnection without logging implementation.
         self.connection = ProxySSHConnection
         self.origin = 'client'
-        self.protocol = protocol
+        self.protocol = proto
         self.host = host
         self.port = port
         self.log = log
@@ -529,12 +531,16 @@ class SSHServerFactory(factory.SSHFactory):
         '''
         pass
 
+    # pylint: enable=R0902
+
 
 class SSHServerTransport(transport.SSHServerTransport):
     '''
     SSH proxy server protocol. Subclass of SSH transport protocol layer
     representation for servers.
     '''
+    # ignore 'too-many-public-methods'
+    # pylint: disable=R0904
     # TODO: This class has only slight difference from client ssh transport
     # protocol layer. This subclass is better createid with some factory method.
     def __init__(self):
@@ -626,6 +632,7 @@ class SSHServerTransport(transport.SSHServerTransport):
             # the other proxy instance should already be calling
             # reactor.stop(), so we can just take a nap
 
+    # pylint: enable=R0904
 
 class Realm(object):
     '''
@@ -635,8 +642,18 @@ class Realm(object):
     Realm connects our service and authentication methods.
     '''
     # NOTE: This class will be useless, if we subclass portal.Portal.
+    # ignore 'too-few-public-methods'
+    # pylint: disable=R0903
     implements(portal.IRealm)
 
+    def __init__(self):
+        '''
+        Nothing to do
+        '''
+        pass
+
+    # ignore 'invalid-name', 'no-self-use'
+    # pylint: disable=C0103,R0201
     def requestAvatar(self, avatarId, mind, *interfaces):
         '''
         Return object which provides one of the given interfaces.
@@ -645,6 +662,8 @@ class Realm(object):
         # pylint: disable=W0613
         return interfaces[0], EavesdroppedUser(avatarId), lambda: None
         # pylint: enable=W0613
+
+    # pylint: enable=C0103,R0201,R0903
 
 
 class EavesdroppedUser(avatar.ConchUser):
@@ -658,42 +677,52 @@ class EavesdroppedUser(avatar.ConchUser):
         self.username = username
 
 
-class PublicKeyCredentialsChecker:
+class PublicKeyCredentialsChecker(object):
     '''
     Implements one of several client authentication on proxy server side.
     '''
     implements(checkers.ICredentialsChecker)
     credentialInterfaces = (credentials.ISSHPrivateKey,)
 
-    def __init__(self, factory):
-        self.host = factory.host
-        self.port = factory.port
-        self.serverq = factory.serverq
-        self.clientq = factory.clientq
-        self.log = factory.log
-        self.connection = factory.connection
+    def __init__(self, my_factory):
+        self.host = my_factory.host
+        self.port = my_factory.port
+        self.serverq = my_factory.serverq
+        self.clientq = my_factory.clientq
+        self.log = my_factory.log
+        self.connection = my_factory.connection
         self.receive = self.clientq
 
-    def requestAvatarId(self, credentials):
+    # ignore 'invalid-method-name'
+    # pylint: disable=C0103
+    def requestAvatarId(self, creds):
         '''
         Set a callback for user auth success
         '''
         tmp_deferred = self.receive.get().addCallback(self.is_auth_success,
-                credentials.username)
-        self.connect_to_server(credentials.username)
+                creds.username)
+        self.connect_to_server(creds.username)
 
         return tmp_deferred
 
-    def is_auth_success(self, result, avatarId):
+    # pylint: enable=C0103
+
+    # ignore 'no-self-use'
+    # pylint: disable=R0201
+    def is_auth_success(self, result, avatar_id):
         '''
         Check authentication result from proxy client.
         '''
+        # ignore 'nonstandard-exception'
+        # pylint: disable=W0710
         if result:
-            return avatarId
+            return avatar_id
         else:
             # let proxy server know that it should disconnect client
             raise python.failure.Failure(
                 error.ConchError("Authorization Failed"))
+
+    # pylint: enable=W0710,R0201
 
     def connect_to_server(self, username):
         '''
@@ -704,7 +733,8 @@ class PublicKeyCredentialsChecker:
 
         # now connect to the real server and begin proxying...
         client_factory = SSHClientFactory(
-            SSHClientTransport, self.serverq, self.clientq, self.log, username)
+            SSHClientTransport, (self.serverq, self.clientq),
+            self.log, username)
         client_factory.connection = self.connection
         reactor.connectTCP(self.host, self.port, client_factory)
 
@@ -717,10 +747,10 @@ class SSHClientFactory(protocol.ClientFactory):
     '''
     # TODO: Change this. We can use normal client factory for TCP.
 
-    def __init__(self, protocol, serverq, clientq, log, username):
+    def __init__(self, proto, (serverq, clientq), log, username):
         # which side we're talking to?
         self.origin = 'server'
-        self.protocol = protocol
+        self.protocol = proto
         self.serverq = serverq
         self.clientq = clientq
         self.log = log
@@ -734,6 +764,9 @@ class SSHClientFactory(protocol.ClientFactory):
         self.clientq.put(False)
         sys.stderr.write('Unable to connect! %s\n' % reason.getErrorMessage())
 
+
+# ignore 'too-many-public-methods'
+# pylint: disable=R0904
 
 class SSHClientTransport(transport.SSHClientTransport):
     '''
@@ -854,6 +887,7 @@ class SSHClientTransport(transport.SSHClientTransport):
             # the other proxy instance should already be calling
             # reactor.stop(), so we can just take a nap
 
+# pylint: enable=R0904
 
 
 class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
@@ -879,6 +913,8 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
 
 
 # common to both SSH server and client
+# ignore 'too-many-public-methods'
+# pylint: disable=R0904
 
 class ProxySSHConnection(connection.SSHConnection):
     '''
@@ -901,3 +937,5 @@ class ProxySSHConnection(connection.SSHConnection):
         if ord(payload[0]) == 94:
             # SSH_MSG_CHANNEL_DATA
             self.transport.log.log(self.transport.origin, payload.encode('hex'))
+
+# pylint: enable=R0904
