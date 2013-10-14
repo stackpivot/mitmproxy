@@ -6,8 +6,7 @@ Common MITM proxy classes.
 from twisted.internet import protocol, reactor, defer
 
 # Twisted imports for SSH.
-from twisted.conch.ssh import connection, factory, keys, session, transport, \
-                              userauth
+from twisted.conch.ssh import connection, factory, keys, transport, userauth
 from twisted.cred import checkers, credentials, portal
 from twisted.conch import avatar, error
 from zope.interface import implements
@@ -174,7 +173,7 @@ class ProxyProtocol(protocol.Protocol):
     def proxy_data_received(self, data):
         '''
         Callback function for both client and server side of the proxy.
-        Each side specifies its input (rx) and output (tx) queues.
+        Each side specifies its input (receive) and output (transmit) queues.
         '''
         if data is False:
             # Special value indicating that one side of our proxy
@@ -482,7 +481,7 @@ class SSHServerFactory(factory.SSHFactory):
     Factory class for proxy SSH server.
 
     If you want to implement your own logger of SSH Connection layer, subclass
-    ProxySSHConnection and override logChannelCommunication() method.
+    ProxySSHConnection and override log_channel_communication() method.
     Then set factory atribute after factory creation.
     Example:
         factory.connection = SubclassProxySSHConnection
@@ -536,9 +535,9 @@ class SSHServerTransport(transport.SSHServerTransport):
         self.host = self.factory.host
         self.port = self.factory.port
         self.log = self.factory.log
-        # input - data from the real server XXX: really?
+        # input - data from the real client
         self.receive = self.factory.clientq
-        # output - data for the real client XXX: really?
+        # output - data for the real server
         self.transmit = self.factory.serverq
 
         transport.SSHServerTransport.connectionMade(self)
@@ -582,9 +581,13 @@ class SSHServerTransport(transport.SSHServerTransport):
 
         if messageType == 52:
             # SSH_MSG_USERAUTH_SUCCESS
-            self.receive.get().addCallback(self._cbProxyDataReceived)
+            self.receive.get().addCallback(self._cb_proxy_data_received)
 
-    def _cbProxyDataReceived(self, data):
+    def _cb_proxy_data_received(self, data):
+        '''
+        Callback function for both client and server side of the proxy.
+        Each side specifies its input (receive) and output (transmit) queues.
+        '''
         if data is False:
             # Special value indicating that one side of our proxy
             # no longer has an open connection. So we close the
@@ -596,7 +599,7 @@ class SSHServerTransport(transport.SSHServerTransport):
             # Transmit queue is defined => connection to
             # the other side is still open, we can send data to it.
             self.sendPacket(ord(data[0]), data[1:])
-            self.receive.get().addCallback(self._cbProxyDataReceived)
+            self.receive.get().addCallback(self._cb_proxy_data_received)
         else:
             # got some data to be sent, but we no longer
             # have a connection to the other side
@@ -618,10 +621,16 @@ class Realm(object):
     implements(portal.IRealm)
 
     def requestAvatar(self, avatarId, mind, *interfaces):
+        """
+        Return object which provides one of the given interfaces.
+        """
         return interfaces[0], EavesdroppedUser(avatarId), lambda: None
 
 
 class EavesdroppedUser(avatar.ConchUser):
+    '''
+    Provides service for concrete user.
+    '''
     # NOTE: This class will be useless, if we subclass porta.Portal.
     def __init__(self, username):
         avatar.ConchUser.__init__(self)
@@ -649,13 +658,13 @@ class PublicKeyCredentialsChecker:
         '''
         Set a callback for user auth success
         '''
-        d = self.receive.get().addCallback(self._cbIsAuthSuccess,
+        tmp_deferred = self.receive.get().addCallback(self._cb_is_auth_success,
                 credentials.username)
         self.connectToServer(credentials.username)
 
-        return d
+        return tmp_deferred
 
-    def _cbIsAuthSuccess(self, result, avatarId):
+    def _cb_is_auth_success(self, result, avatarId):
         '''
         Check authentication result from proxy client.
         '''
@@ -674,10 +683,10 @@ class PublicKeyCredentialsChecker:
             'Connecting to %s:%d...\n' % (self.host, self.port))
 
         # now connect to the real server and begin proxying...
-        factory = SSHClientFactory(SSHClientTransport, self.serverq,
-                                   self.clientq, self.log, username)
-        factory.connection = self.connection
-        reactor.connectTCP(self.host, self.port, factory)
+        client_factory = SSHClientFactory(SSHClientTransport, self.serverq,
+                                          self.clientq, self.log, username)
+        client_factory.connection = self.connection
+        reactor.connectTCP(self.host, self.port, client_factory)
 
 
 # SSH proxy client.
@@ -722,14 +731,14 @@ class SSHClientTransport(transport.SSHClientTransport):
         self.connection = self.factory.connection
         self.username = self.factory.username
         self.origin = self.factory.origin
-        # input - data from the real server XXX: really?
+        # input - data from the real client
         self.receive = self.factory.serverq
-        # output - data for the real client XXX: really?
+        # output - data for the real server
         self.transmit = self.factory.clientq
         self.log = self.factory.log
 
         # callback for the receiver queue
-        self.receive.get().addCallback(self._cbProxyDataReceived)
+        self.receive.get().addCallback(self._cb_proxy_data_received)
 
         transport.SSHClientTransport.connectionMade(self)
         sys.stderr.write('Connected to real server.\n')
@@ -781,6 +790,8 @@ class SSHClientTransport(transport.SSHClientTransport):
         As we're acting as a passthrogh, we can safely leave this
         up to the client.
         '''
+        python.log.msg("Don't care about server host key verification. Key is"
+                       "%s" % (pubKey))
         return defer.succeed(1)
 
     def connectionSecure(self):
@@ -790,7 +801,11 @@ class SSHClientTransport(transport.SSHClientTransport):
         self.requestService(ProxySSHUserAuthClient(self.username,
                                                    self.connection()))
 
-    def _cbProxyDataReceived(self, data):
+    def _cb_proxy_data_received(self, data):
+        '''
+        Callback function for both client and server side of the proxy.
+        Each side specifies its input (receive) and output (transmit) queues.
+        '''
         if data is False:
             # Special value indicating that one side of our proxy
             # no longer has an open connection. So we close the
@@ -802,7 +817,7 @@ class SSHClientTransport(transport.SSHClientTransport):
             # Transmit queue is defined => connection to
             # the other side is still open, we can send data to it.
             self.sendPacket(ord(data[0]), data[1:])
-            self.receive.get().addCallback(self._cbProxyDataReceived)
+            self.receive.get().addCallback(self._cb_proxy_data_received)
         else:
             # got some data to be sent, but we no longer
             # have a connection to the other side
@@ -815,6 +830,9 @@ class SSHClientTransport(transport.SSHClientTransport):
 
 
 class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
+    '''
+    Implements client side of 'ssh-userauth'.
+    '''
     def getPassword(self, prompt = None):
         # we won't do password authentication XXX: why?
         # TODO: implement me maybe?
@@ -843,10 +861,10 @@ class ProxySSHConnection(connection.SSHConnection):
     message processing and performs channel communication logging.
     '''
     def packetReceived(self, messageNum, packet):
-        self.logChannelCommunication(chr(messageNum) + packet)
+        self.log_channel_communication(chr(messageNum) + packet)
         self.transport.transmit.put(chr(messageNum) + packet)
 
-    def logChannelCommunication(self, payload):
+    def log_channel_communication(self, payload):
         '''
         Logs channel communication.
 
