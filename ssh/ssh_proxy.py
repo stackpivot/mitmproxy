@@ -23,9 +23,8 @@ def main():
     sys.stderr.write(
         'Server running on localhost:%d...\n' % (opts.localport))
 
-    factory = mitmproxy.SSHServerFactory(mitmproxy.SSHServerTransport,
-                                         opts.host, opts.port,
-                                         log)
+    factory = mitmproxy.SSHServerFactory(
+        mitmproxy.SSHServerTransport, opts.host, opts.port, log)
     reactor.listenTCP(opts.localport, factory)
     reactor.run()
 
@@ -35,4 +34,3 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         sys.exit(0)
-
