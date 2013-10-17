@@ -641,7 +641,6 @@ class Realm(object):
 
     Realm connects our service and authentication methods.
     '''
-    # NOTE: This class will be useless, if we subclass portal.Portal.
     # ignore 'too-few-public-methods'
     # pylint: disable=R0903
     implements(portal.IRealm)
@@ -656,25 +655,17 @@ class Realm(object):
     # pylint: disable=C0103,R0201
     def requestAvatar(self, avatarId, mind, *interfaces):
         '''
-        Return object which provides one of the given interfaces.
+        Return object which provides one of the given interfaces of service.
+
+        Our object provides no service interface and even won't be used, but
+        this is needed for proper twisted ssh authentication mechanism.
         '''
         # ignore 'unused-argument' warning
         # pylint: disable=W0613
-        return interfaces[0], EavesdroppedUser(avatarId), lambda: None
+        return interfaces[0], avatar.ConchUser(), lambda: None
         # pylint: enable=W0613
 
     # pylint: enable=C0103,R0201,R0903
-
-
-class EavesdroppedUser(avatar.ConchUser):
-    '''
-    Avatar provider for MITM'd user
-    '''
-    # NOTE: This class will be useless, if we subclass portal.Portal.
-    def __init__(self, username):
-        avatar.ConchUser.__init__(self)
-
-        self.username = username
 
 
 class SSHCredentialsChecker(object):
@@ -981,6 +972,9 @@ class ProxySSHConnection(connection.SSHConnection):
     message processing and performs channel communication logging.
     '''
     def packetReceived(self, messageNum, packet):
+        '''
+        Log data and send received packet to the proxy server side.
+        '''
         self.log_channel_communication(chr(messageNum) + packet)
         self.transport.transmit.put(chr(messageNum) + packet)
 
