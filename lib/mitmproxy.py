@@ -499,18 +499,6 @@ class SSHServerFactory(factory.SSHFactory):
         self.serverq = defer.DeferredQueue()
         self.clientq = defer.DeferredQueue()
 
-        if not (os.path.exists('keys/id_rsa.pub')
-                and os.path.exists('keys/id_rsa')):
-            raise MITMException(
-                "Private/public eypair not generated in the keys directory.")
-
-        self.privateKeys = {
-            'ssh-rsa': keys.Key.fromFile('keys/id_rsa')
-        }
-        self.publicKeys = {
-            'ssh-rsa': keys.Key.fromFile('keys/id_rsa.pub')
-        }
-
         self.services = {
             'ssh-userauth':userauth.SSHUserAuthServer,
             'ssh-connection':self.connection,
@@ -521,15 +509,22 @@ class SSHServerFactory(factory.SSHFactory):
 
     def getPublicKeys(self):
         '''
-        Already done in init
+        Provides public keys for proxy server.
         '''
-        pass
+        if not os.path.exists('keys/id_rsa.pub'):
+            raise MITMException(
+                "Private/public eypair not generated in the keys directory.")
+
+        return {'ssh-rsa': keys.Key.fromFile('keys/id_rsa.pub')}
 
     def getPrivateKeys(self):
         '''
-        Already done in init
+        Provides private keys for proxy server.
         '''
-        pass
+        if not os.path.exists('keys/id_rsa'):
+            raise MITMException(
+                "Private/public eypair not generated in the keys directory.")
+        return {'ssh-rsa': keys.Key.fromFile('keys/id_rsa')}
 
     # pylint: enable=R0902
 
@@ -740,8 +735,8 @@ class SSHCredentialsChecker(object):
             SSHClientTransport, (self.my_factory.serverq,
                                  self.my_factory.clientq),
                                  self.my_factory.log,
-                                 self.username,
-                                 self.password)
+                                 (self.username,
+                                 self.password))
         client_factory.connection = self.my_factory.connection
         client_factory.method = self.method
         reactor.connectTCP(self.my_factory.host, self.my_factory.port,
@@ -750,11 +745,13 @@ class SSHCredentialsChecker(object):
 
 # SSH proxy client.
 
+# ignore 'too-many-instance-attributes'
+# pylint: disable=R0902
 class SSHClientFactory(protocol.ClientFactory):
     '''
     Factory class for proxy SSH client.
     '''
-    def __init__(self, proto, (serverq, clientq), log, username, password):
+    def __init__(self, proto, (serverq, clientq), log, (username, password)):
         # which side we're talking to?
         self.origin = 'server'
         self.protocol = proto
@@ -775,16 +772,13 @@ class SSHClientFactory(protocol.ClientFactory):
 
 
 # ignore 'too-many-public-methods'
-# pylint: disable=R0904
+# pylint: disable=R0904,R0902
 
 class SSHClientTransport(transport.SSHClientTransport):
     '''
     SSH proxy client protocol. Subclass of SSH transport protocol layer
     representation for clients.
     '''
-    # TODO: This class has only slight difference from server ssh transport
-    # protocol layer. This subclass is better created by some factory
-    # method.
     def __init__(self):
         '''
         Nothing to do
@@ -793,8 +787,8 @@ class SSHClientTransport(transport.SSHClientTransport):
 
     def connectionMade(self):
         '''
-        Call parent method fter enstablishing connection and set some
-        attributes and callback.
+        Call parent method after enstablishing connection and make some
+        initialization.
         '''
         self.connection = self.factory.connection
         self.username = self.factory.username
@@ -831,9 +825,7 @@ class SSHClientTransport(transport.SSHClientTransport):
 
     def dispatchMessage(self, messageNum, payload):
         '''
-        In parent method packets are distinguished and dispatched to message
-        processing methods. Added logging and checking original client against
-        proxy server.
+        Add internal logging of incoming packets.
         '''
         transport.SSHClientTransport.dispatchMessage(self, messageNum, payload)
 
@@ -842,7 +834,7 @@ class SSHClientTransport(transport.SSHClientTransport):
 
     def sendPacket(self, messageType, payload):
         '''
-        Subclassed for extending internal logging.
+        Add internal logging of outcoming packets.
         '''
         transport.SSHClientTransport.sendPacket(self, messageType, payload)
 
@@ -986,7 +978,12 @@ class ProxySSHConnection(connection.SSHConnection):
         @type payload: C{str}
         '''
         if ord(payload[0]) == 94:
-            # SSH_MSG_CHANNEL_DATA
-            self.transport.log.log(self.transport.origin, payload.encode('hex'))
+            # Payload:
+            # byte      SSH_MSG_CHANNEL_DATA (94)
+            # uint32    recipient channel
+            # string    data    (string = uint32 + string)
+
+            data = payload[9:]
+            self.transport.log.log(self.transport.origin, data.encode('hex'))
 
 # pylint: enable=R0904
