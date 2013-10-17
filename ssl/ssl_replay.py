@@ -4,7 +4,7 @@ Replay server for SSL-encrytped raw TCP connections running over port 443.
 See --help for usage.
 '''
 
-from twisted.internet import reactor
+from twisted.internet import reactor, ssl
 import Queue
 import sys
 
@@ -36,7 +36,9 @@ def main():
             'Server running on localhost:%d\n' % opts.localport)
         factory = mitmproxy.ReplayServerFactory(
             log, (serverq, clientq), opts.delaymod, clientfirst)
-        reactor.listenTCP(opts.localport, factory)
+        reactor.listenSSL(opts.localport, factory,
+            ssl.DefaultOpenSSLContextFactory(
+                'keys/server.key', 'keys/server.crt'))
         reactor.run()
 
 
