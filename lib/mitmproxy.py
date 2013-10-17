@@ -536,8 +536,6 @@ class SSHServerTransport(transport.SSHServerTransport):
     '''
     # ignore 'too-many-public-methods'
     # pylint: disable=R0904
-    # TODO: This class has only slight difference from client ssh transport
-    # protocol layer. This subclass is better createid with some factory method.
     def __init__(self):
         '''
         Nothing to do.
