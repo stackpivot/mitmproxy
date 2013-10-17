@@ -44,7 +44,7 @@ def main():
     factory = mitmproxy.ProxyServerFactory(
         ProxyServer, opts.host, opts.port, log)
     reactor.listenSSL(
-        opts.localPort, factory, ssl.DefaultOpenSSLContextFactory(
+        opts.localport, factory, ssl.DefaultOpenSSLContextFactory(
             'keys/server.key', 'keys/server.crt'))
     reactor.run()
 
