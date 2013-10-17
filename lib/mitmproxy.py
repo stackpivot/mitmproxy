@@ -49,15 +49,15 @@ def proxy_option_parser(port, localport):
     parser.add_option(
         '-H', '--host', dest='host', type='string',
         metavar='HOST', default='localhost',
-        help='Hostname/IP of real server')
+        help='Hostname/IP of real server (default: %default)')
     parser.add_option(
         '-P', '--port', dest='port', type='int',
         metavar='PORT', default=port,
-        help='Port of real server')
+        help='Port of real server (default: %default)')
     parser.add_option(
         '-p', '--local-port', dest='localport', type='int',
         metavar='PORT', default=localport,
-        help='Local port to listen on')
+        help='Local port to listen on (default: %default)')
     parser.add_option(
         '-o', '--output', dest='logfile', type='string',
         metavar='FILE', default=None,
@@ -74,7 +74,7 @@ def replay_option_parser(localport):
     parser.add_option(
         '-p', '--local-port', dest='localport', type='int',
         metavar='PORT', default=localport,
-        help='Local port to listen on')
+        help='Local port to listen on (default: %default)')
     parser.add_option(
         '-f', '--from-file', dest='inputfile', type='string',
         metavar='FILE', default=None,
@@ -86,7 +86,7 @@ def replay_option_parser(localport):
     parser.add_option(
         '-d', '--delay-modifier', dest='delaymod', type='float',
         metavar='FLOAT', default=1.0,
-        help='Modify response delay (default: 1.0 - no change)')
+        help='Modify response delay (default: %default)')
     opts, args = parser.parse_args()
     return (opts, args)
 
@@ -103,7 +103,7 @@ def viewer_option_parser():
     parser.add_option(
         '-d', '--delay-modifier', dest='delaymod', type='float',
         metavar='FLOAT', default=1.0,
-        help='Modify response delay (default: 1.0 - no change)')
+        help='Modify response delay (default: %default)')
     opts, args = parser.parse_args()
     return (opts, args)
 
