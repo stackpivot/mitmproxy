@@ -6,6 +6,7 @@ See --help for usage.
 
 from twisted.internet import reactor, ssl
 import sys
+import os
 
 sys.path.append('../lib')
 import mitmproxy
@@ -33,6 +34,11 @@ def main():
     Parse options, open log and start proxy server
     '''
     (opts, _) = mitmproxy.proxy_option_parser(443, 4443)
+
+    if not os.path.exists('keys/server.key') \
+    or not os.path.exists('keys/server.crt'):
+        print "Please do create server certificates."
+        sys.exit(1)
 
     log = mitmproxy.Logger()
     if opts.logfile is not None:

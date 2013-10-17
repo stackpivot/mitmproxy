@@ -7,6 +7,7 @@ See --help for usage.
 from twisted.internet import reactor, ssl
 import Queue
 import sys
+import os
 
 sys.path.append('../lib')
 import mitmproxy
@@ -17,6 +18,11 @@ def main():
     Parse options, open and read log file, start replay server
     '''
     (opts, _) = mitmproxy.replay_option_parser(4443)
+
+    if not os.path.exists('keys/server.key') \
+    or not os.path.exists('keys/server.crt'):
+        print "Please do create server certificates."
+        sys.exit(1)
 
     if opts.inputfile is None:
         print "Need to specify an input file."
