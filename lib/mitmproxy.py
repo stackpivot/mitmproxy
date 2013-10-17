@@ -834,7 +834,7 @@ class SSHClientTransport(transport.SSHClientTransport):
 
     def sendPacket(self, messageType, payload):
         '''
-        Add internal logging of outcoming packets.
+        Add internal logging of outgoing packets.
         '''
         transport.SSHClientTransport.sendPacket(self, messageType, payload)
 
