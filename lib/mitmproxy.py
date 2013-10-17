@@ -517,7 +517,7 @@ class SSHServerFactory(factory.SSHFactory):
         }
 
         self.portal = portal.Portal(Realm())
-        self.portal.registerChecker(PublicKeyCredentialsChecker(self))
+        self.portal.registerChecker(SSHCredentialsChecker(self))
 
     def getPublicKeys(self):
         '''
@@ -677,66 +677,84 @@ class EavesdroppedUser(avatar.ConchUser):
         self.username = username
 
 
-class PublicKeyCredentialsChecker(object):
+class SSHCredentialsChecker(object):
     '''
-    Implements one of several client authentication on proxy server side.
+    Implement publickey and password authentication method on proxy server
+    side.
     '''
     implements(checkers.ICredentialsChecker)
-    credentialInterfaces = (credentials.ISSHPrivateKey,)
+    credentialInterfaces = (credentials.ISSHPrivateKey,
+                            credentials.IUsernamePassword,)
 
     def __init__(self, my_factory):
-        self.host = my_factory.host
-        self.port = my_factory.port
-        self.serverq = my_factory.serverq
-        self.clientq = my_factory.clientq
-        self.log = my_factory.log
-        self.connection = my_factory.connection
-        self.receive = self.clientq
+        self.my_factory = my_factory
+        self.receive = self.my_factory.clientq
+        self.password = defer.DeferredQueue()
+        # Need to know authentication method. Currently (publickey, password).
+        self.method = None
 
     # ignore 'invalid-method-name'
     # pylint: disable=C0103
+    # ignore 'nonstandard-exception'
+    # pylint: disable=W0710
     def requestAvatarId(self, creds):
         '''
         Set a callback for user auth success
         '''
-        tmp_deferred = self.receive.get().addCallback(self.is_auth_success,
-                creds.username)
-        self.connect_to_server(creds.username)
+        if not hasattr(creds, "username"):
+            raise python.failure.Failure(
+                error.ConchError("Authentication Failed"))
 
-        return tmp_deferred
+        # set username for connect_to_server() method
+        self.username = creds.username
+        deferred = self.receive.get().addCallback(self.is_auth_success)
+
+        if hasattr(creds, "password"):
+            self.password.put(creds.password)
+            if self.method == None:
+                self.method = "password"
+                self.connect_to_server()
+
+        if self.method == None:
+            self.method = "publickey"
+            self.connect_to_server()
+
+        return deferred
 
     # pylint: enable=C0103
 
-    # ignore 'no-self-use'
-    # pylint: disable=R0201
-    def is_auth_success(self, result, avatar_id):
+    def is_auth_success(self, result):
         '''
         Check authentication result from proxy client.
         '''
-        # ignore 'nonstandard-exception'
-        # pylint: disable=W0710
         if result:
-            return avatar_id
+            return self.username
         else:
             # let proxy server know that it should disconnect client
             raise python.failure.Failure(
-                error.ConchError("Authorization Failed"))
+                error.ConchError("Authentication Failed"))
 
-    # pylint: enable=W0710,R0201
+    # pylint: enable=W0710
 
-    def connect_to_server(self, username):
+    def connect_to_server(self):
         '''
         Start mitm proxy client.
         '''
-        sys.stderr.write(
-            'Connecting to %s:%d...\n' % (self.host, self.port))
+        #sys.stderr.write(
+        #    'Connecting to %s:%d...\n' % (self.my_factory.host,
+        #        self.my_factory.port))
 
         # now connect to the real server and begin proxying...
         client_factory = SSHClientFactory(
-            SSHClientTransport, (self.serverq, self.clientq),
-            self.log, username)
-        client_factory.connection = self.connection
-        reactor.connectTCP(self.host, self.port, client_factory)
+            SSHClientTransport, (self.my_factory.serverq,
+                                 self.my_factory.clientq),
+                                 self.my_factory.log,
+                                 self.username,
+                                 self.password)
+        client_factory.connection = self.my_factory.connection
+        client_factory.method = self.method
+        reactor.connectTCP(self.my_factory.host, self.my_factory.port,
+                           client_factory)
 
 
 # SSH proxy client.
@@ -745,9 +763,7 @@ class SSHClientFactory(protocol.ClientFactory):
     '''
     Factory class for proxy SSH client.
     '''
-    # TODO: Change this. We can use normal client factory for TCP.
-
-    def __init__(self, proto, (serverq, clientq), log, username):
+    def __init__(self, proto, (serverq, clientq), log, username, password):
         # which side we're talking to?
         self.origin = 'server'
         self.protocol = proto
@@ -755,6 +771,8 @@ class SSHClientFactory(protocol.ClientFactory):
         self.clientq = clientq
         self.log = log
         self.username = username
+        self.password = password
+        self.method = "publickey"
 
         # NOTE: In the future we can let a user define how to log connection
         # layer
@@ -789,6 +807,8 @@ class SSHClientTransport(transport.SSHClientTransport):
         '''
         self.connection = self.factory.connection
         self.username = self.factory.username
+        self.password = self.factory.password
+        self.client_method = self.factory.method
         self.origin = self.factory.origin
         # input - data from the real server
         self.receive = self.factory.serverq
@@ -828,11 +848,6 @@ class SSHClientTransport(transport.SSHClientTransport):
 
         python.log.msg("Received message (%s) from %s with payload: %s " % (
             messageNum, self.origin, payload.encode('string_escape')))
-
-        # We'll let the proxy server know about auth success
-        if messageNum == 52:
-            # SSH_MSG_USERAUTH_SUCCESS
-            self.transmit.put(True)
 
     def sendPacket(self, messageType, payload):
         '''
@@ -894,18 +909,60 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
     '''
     Implements client side of 'ssh-userauth'.
     '''
+    def __init__(self, user, instance):
+        '''
+        Call parent constructor.
+        '''
+        userauth.SSHUserAuthClient.__init__(self, user, instance)
+
+    def ssh_USERAUTH_FAILURE(self, packet):
+        '''
+        Let the proxy server know about auth-method failure.
+        Fix bug in parent method.
+        '''
+        if self.lastAuth is not "none":
+            # Send info about failure to proxy server, and it depends on method
+            # kind and order on client side.
+            if (self.lastAuth is not "public"
+                    or self.transport.client_first_method is not "password"):
+                self.transport.transmit.put(False)
+
+        from twisted.conch.ssh.common import getNS
+        _, partial = getNS(packet)
+        partial = ord(partial)
+        # if partial: <<< so nasty BUG!!!
+        if not partial: # fix
+            self.authenticatedWith.append(self.lastAuth)
+
+        return userauth.SSHUserAuthClient.ssh_USERAUTH_FAILURE(self, packet)
+
+    def ssh_USERAUTH_SUCCESS(self, packet):
+        '''
+        Let the proxy server know about auth-method success and call parent
+        method.
+        '''
+        self.transport.transmit.put(True)
+        return userauth.SSHUserAuthClient.ssh_USERAUTH_SUCCESS(self, packet)
+
     def getPassword(self, prompt = None):
-        # we won't do password authentication
-        # TODO: implement me maybe?
-        return
+        '''
+        Return deffered with password from ssh proxy server.
+        '''
+        return self.transport.password.get()
 
     def getPublicKey(self):
+        '''
+        Create PublicKey blob and return it or raise exception.
+        '''
         if not (os.path.exists('keys/id_rsa.pub')):
             raise MITMException(
                 "Public/private keypair not generated in the keys directory.")
         return keys.Key.fromFile('keys/id_rsa.pub').blob()
 
     def getPrivateKey(self):
+        '''
+        Create PrivateKey object and return it or raise exception.
+        '''
         if not (os.path.exists('keys/id_rsa')):
             raise MITMException(
                 "Public/private keypair not generated in the keys directory.")

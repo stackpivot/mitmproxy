@@ -6,7 +6,7 @@ ssh_proxy.py:
 SUPPORTED AUTHENTICATION
 ========================
 publickey:  YES
-password:   NO (comming soon;-)
+password:   YES
 other:      NO
 
 LOGGING
@@ -16,12 +16,15 @@ SSH_MSG_CHANNEL_DATA payloads only
 USAGE
 =====
 1. Generate keys.
-    sh keys/keygen.sh
+    cd keys && sh keys/keygen.sh && cd ..
 2. Copy public key on server, which you want to connect.
     ssh-copy-id -i keys/id_rsa username@hostname
-3. Start proxy server. Read the help.
+3. Read the help.
     ./ssh_proxy.py --help
-4. Connect to proxy server with identity keys/client.
+4. Start proxy server.
+    e.g:
+    ./ssh_proxy.py -host=localhost --port=22 -local-port=2222
+5. Connect to proxy server with identity keys/client.
     e.g.:
     ssh -i keys/id_rsa -p 2222 testmonkey@localhost
 5. ???
