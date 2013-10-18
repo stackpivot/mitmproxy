@@ -10,7 +10,7 @@ NOTES
 cd keys && ./keygen.sh && cd -
 ```
 
-* Does NOT follow HTTP redirects and other fancy things
+* see README.md for HTTP interceptor as it applies also to SSL
 
 * Connect with SSL:
 
