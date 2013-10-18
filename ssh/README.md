@@ -1,31 +1,52 @@
-DESCRIPTION
-===========
-ssh_proxy.py:
-    * SSH proxy server, that logs interactive session communication.
+SSH INTERCEPTOR
+===============
 
-SUPPORTED AUTHENTICATION
-========================
-publickey:  YES
-password:   YES
-other:      NO
 
-LOGGING
-=======
-SSH_MSG_CHANNEL_DATA payloads only
+SUPPORTED AUTH METHODS
+----------------------
+* publickey:  YES
+* password:   YES
+* other:      NO (maybe keyboard-interactive in the future?)
+
 
 USAGE
-=====
-1. Generate keys.
+-----
+
+1. Generate fake client/server keypairs
+
+    ```
     cd keys && sh keys/keygen.sh && cd ..
-2. Copy public key on server, which you want to connect.
-    ssh-copy-id -i keys/id_rsa username@hostname
-3. Read the help.
-    ./ssh_proxy.py --help
-4. Start proxy server.
-    e.g:
-    ./ssh_proxy.py -host=localhost --port=22 -local-port=2222
-5. Connect to proxy server with identity keys/client.
-    e.g.:
-    ssh -i keys/id_rsa -p 2222 testmonkey@localhost
+    ```
+
+2. Copy the newly generated public key to server (Z0MG L33T H4X!!!1)
+
+    ```
+    ssh-copy-id -i keys/id_rsa user@host
+    ```
+
+4. Start proxy server, eg. to intercept traffic for `host`
+
+    ```
+    ./ssh_proxy.py -H host
+    ```
+
+5. Connect through the proxy
+
+    ```
+    ssh user@localhost -p 2222
+    ```
+
 5. ???
+
 6. Profit!
+
+
+NOTES
+-----
+
+* SSH password is neither saved in the log, nor shown on the screen (unless overriden by commandline option).
+* Client's SSH pubkey is ignored, proxy replaces it by its own.
+* Server must accept proxy's pubkey (if using pubkey auth).
+* Password is forwarded without problems.
+* SSH client will see MITM warning if it connected to the real server before (cached server host key fingerprint). If it's connecting for the first time, then... ;)
+* You can have separate keypairs for client/server, just use the -a/-A and -b/-B options (mnemonic: Alice is the client, Bob the server; pubkey is not a big deal, privkey is ;))

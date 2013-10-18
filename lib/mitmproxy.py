@@ -66,6 +66,51 @@ def proxy_option_parser(port, localport):
     return (opts, args)
 
 
+def ssh_proxy_option_parser(port, localport):
+    '''
+    Option parser for SSH proxy
+    '''
+    parser = optparse.OptionParser()
+    parser.add_option(
+        '-H', '--host', dest='host', type='string',
+        metavar='HOST', default='localhost',
+        help='Hostname/IP of real server (default: %default)')
+    parser.add_option(
+        '-P', '--port', dest='port', type='int',
+        metavar='PORT', default=port,
+        help='Port of real server (default: %default)')
+    parser.add_option(
+        '-p', '--local-port', dest='localport', type='int',
+        metavar='PORT', default=localport,
+        help='Local port to listen on (default: %default)')
+    parser.add_option(
+        '-o', '--output', dest='logfile', type='string',
+        metavar='FILE', default=None,
+        help='Save log to FILE instead of writing to stdout')
+    parser.add_option(
+        '-a', '--client-pubkey', dest='clientpubkey', type='string',
+        metavar='FILE', default='keys/id_rsa.pub',
+        help='Use FILE as the client pubkey (default: %default)')
+    parser.add_option(
+        '-A', '--client-privkey', dest='clientprivkey', type='string',
+        metavar='FILE', default='keys/id_rsa',
+        help='Use FILE as the client privkey (default: %default)')
+    parser.add_option(
+        '-b', '--server-pubkey', dest='serverpubkey', type='string',
+        metavar='FILE', default='keys/id_rsa.pub',
+        help='Use FILE as the server pubkey (default: %default)')
+    parser.add_option(
+        '-B', '--server-privkey', dest='serverprivkey', type='string',
+        metavar='FILE', default='keys/id_rsa',
+        help='Use FILE as the server privkey (default: %default)')
+    parser.add_option(
+        '-s', '--show-password', dest='showpassword', action='store_true',
+        default=False,
+        help='Show SSH password on the screen (default: %default)')
+    opts, args = parser.parse_args()
+    return (opts, args)
+
+
 def replay_option_parser(localport):
     '''
     Default option parser for replay servers
@@ -486,9 +531,10 @@ class SSHServerFactory(factory.SSHFactory):
     Example:
         factory.connection = SubclassProxySSHConnection
     '''
-    # ignore 'too-many-instance-attributes'
-    # pylint: disable=R0902
-    def __init__(self, proto, host, port, log):
+    # ignore 'too-many-instance-attributes', 'too-many-arguments'
+    # pylint: disable=R0902,R0913
+    def __init__(
+        self, proto, (host, port), log, showpass, (cpub, cpriv), (spub, spriv)):
         # Default is our ProxySSHConnection without logging implementation.
         self.connection = ProxySSHConnection
         self.origin = 'client'
@@ -498,6 +544,11 @@ class SSHServerFactory(factory.SSHFactory):
         self.log = log
         self.serverq = defer.DeferredQueue()
         self.clientq = defer.DeferredQueue()
+        self.cpub = cpub
+        self.cpriv = cpriv
+        self.spub = spub
+        self.spriv = spriv
+        self.showpass = showpass
 
         self.services = {
             'ssh-userauth':userauth.SSHUserAuthServer,
@@ -507,6 +558,9 @@ class SSHServerFactory(factory.SSHFactory):
         self.portal = portal.Portal(Realm())
         self.portal.registerChecker(SSHCredentialsChecker(self))
 
+    # pylint: enable=R0913
+
+    # TODO: separate client/server keys and use the vars from constructor
     def getPublicKeys(self):
         '''
         Provides public keys for proxy server.
@@ -517,6 +571,7 @@ class SSHServerFactory(factory.SSHFactory):
 
         return {'ssh-rsa': keys.Key.fromFile('keys/id_rsa.pub')}
 
+    # TODO: separate client/server keys and use the vars from constructor
     def getPrivateKeys(self):
         '''
         Provides private keys for proxy server.
@@ -720,6 +775,7 @@ class SSHCredentialsChecker(object):
 
     # pylint: enable=W0710
 
+    # TODO: print password if showpass is True (from SSHServerFactory)
     def connect_to_server(self):
         '''
         Start mitm proxy client.
@@ -760,8 +816,7 @@ class SSHClientFactory(protocol.ClientFactory):
         self.password = password
         self.method = "publickey"
 
-        # NOTE: In the future we can let a user define how to log connection
-        # layer
+        # NOTE: In the future we can let user define how to log conn layer
         self.connection = ProxySSHConnection
 
     def clientConnectionFailed(self, connector, reason):
@@ -854,8 +909,9 @@ class SSHClientTransport(transport.SSHClientTransport):
         '''
         Required implementation of a call to run another service.
         '''
-        self.requestService(ProxySSHUserAuthClient(self.username,
-                                                   self.connection()))
+        self.requestService(
+            ProxySSHUserAuthClient(
+                self.username, self.connection()))
 
     def proxy_data_received(self, data):
         '''
@@ -899,7 +955,7 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
     def ssh_USERAUTH_FAILURE(self, packet):
         '''
         Let the proxy server know about auth-method failure.
-        Fix bug in parent method.
+        Fix bug in parent class' method.
         '''
         if self.lastAuth is not "none":
             # Send info about failure to proxy server, and it depends on method
@@ -931,6 +987,7 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
         '''
         return self.transport.password.get()
 
+    # TODO: separate client/server keys and use the vars from constructor
     def getPublicKey(self):
         '''
         Create PublicKey blob and return it or raise exception.
@@ -940,6 +997,7 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
                 "Public/private keypair not generated in the keys directory.")
         return keys.Key.fromFile('keys/id_rsa.pub').blob()
 
+    # TODO: separate client/server keys and use the vars from constructor
     def getPrivateKey(self):
         '''
         Create PrivateKey object and return it or raise exception.

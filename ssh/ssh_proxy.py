@@ -14,7 +14,7 @@ def main():
     '''
     Parse options, open log and start proxy server
     '''
-    (opts, _) = mitmproxy.proxy_option_parser(22, 2222)
+    (opts, _) = mitmproxy.ssh_proxy_option_parser(22, 2222)
 
     log = mitmproxy.Logger()
     if opts.logfile is not None:
@@ -24,7 +24,10 @@ def main():
         'Server running on localhost:%d...\n' % (opts.localport))
 
     factory = mitmproxy.SSHServerFactory(
-        mitmproxy.SSHServerTransport, opts.host, opts.port, log)
+        mitmproxy.SSHServerTransport, (opts.host, opts.port),
+        log, opts.showpassword,
+        (opts.clientpubkey, opts.clientprivkey),
+        (opts.serverpubkey, opts.serverprivkey))
     reactor.listenTCP(opts.localport, factory)
     reactor.run()
 
