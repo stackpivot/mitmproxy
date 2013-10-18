@@ -64,3 +64,20 @@ Example Usage
   ```
   $ ./logdiff.sh fencing_apc.log other_fencing_apc.log
   ```
+
+
+A little bonus ;)
+-----------------
+
+```
+I'm talking with the man in the middle
+I'm asking him to check my keys
+And no message could have been any clearer
+If you wanna make the web a better place
+(If you wanna make the web a better place)
+Take a look at yourself, and then make a change
+(Take a look at yourself, and then make a change)
+(Na na na, na na na, na na, na nah)
+```
+
+Pwn'd.
