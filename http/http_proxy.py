@@ -1,15 +1,7 @@
 #!/usr/bin/env python2.7
 '''
 HTTP interceptor and logger.
-See --help for usage.
-
-Assumptions:
-* no http redirects
-* relative links, not absolute
-
-Solution to both of the above problems:
-* run http_replay.py as root with local port set to 80 (real server's port)
-* override DNS resolution for the original domain to localhost (via /etc/hosts)
+See --help for usage, README.md for solutions to common problems.
 '''
 
 from twisted.internet import reactor

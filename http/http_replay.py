@@ -1,10 +1,7 @@
 #!/usr/bin/env python2.7
 '''
 Replay server for HTTP.
-See --help for usage.
-
-If something doesn't work (especially http redirects
-and absolute links), see the comments in http_proxy.py. ;)
+See --help for usage, README.md for solutions to common problems.
 '''
 
 from twisted.internet import reactor
