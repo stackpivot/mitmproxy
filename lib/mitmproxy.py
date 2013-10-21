@@ -1059,3 +1059,8 @@ class ProxySSHConnection(connection.SSHConnection):
             self.transport.log.log(self.transport.origin, data.encode('hex'))
 
 # pylint: enable=R0904
+
+
+# TODO: implement
+class SSHReplayServerFactory(factory.SSHFactory):
+    pass
