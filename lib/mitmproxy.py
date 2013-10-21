@@ -775,7 +775,6 @@ class SSHCredentialsChecker(object):
 
     # pylint: enable=W0710
 
-    # TODO: print password if showpass is True (from SSHServerFactory)
     def connect_to_server(self):
         '''
         Start mitm proxy client.
@@ -987,7 +986,7 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
 
     def show_password(self, password):
         '''
-        Show password on porxy output if option was true.
+        Show password on proxy output if option was true.
         '''
         if self.transport.showpass:
             sys.stderr.write("SSH 'password' is: '%s'" % password)
