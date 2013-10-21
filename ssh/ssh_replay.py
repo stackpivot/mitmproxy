@@ -7,7 +7,6 @@ See --help for usage.
 from twisted.internet import reactor
 import Queue
 import sys
-import os
 
 sys.path.append('../lib')
 import mitmproxy
