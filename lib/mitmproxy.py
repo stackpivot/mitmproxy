@@ -513,6 +513,7 @@ def logviewer(inputfile, delaymod):
 
             if who == 'server':
                 sys.stdout.write(what.decode('hex'))
+                sys.stdout.flush()
 
 
 #####################
