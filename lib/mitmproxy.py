@@ -790,7 +790,8 @@ class SSHCredentialsChecker(object):
                                  self.my_factory.clientq),
                                  self.my_factory.log,
                                  (self.username,
-                                 self.password))
+                                 self.password,
+                                 self.my_factory.showpass))
         client_factory.connection = self.my_factory.connection
         client_factory.method = self.method
         reactor.connectTCP(self.my_factory.host, self.my_factory.port,
@@ -805,7 +806,8 @@ class SSHClientFactory(protocol.ClientFactory):
     '''
     Factory class for proxy SSH client.
     '''
-    def __init__(self, proto, (serverq, clientq), log, (username, password)):
+    def __init__(self, proto, (serverq, clientq), log,
+                 (username, password, showpass)):
         # which side we're talking to?
         self.origin = 'server'
         self.protocol = proto
@@ -815,6 +817,7 @@ class SSHClientFactory(protocol.ClientFactory):
         self.username = username
         self.password = password
         self.method = "publickey"
+        self.showpass = showpass
 
         # NOTE: In the future we can let user define how to log conn layer
         self.connection = ProxySSHConnection
@@ -846,7 +849,8 @@ class SSHClientTransport(transport.SSHClientTransport):
         self.connection = self.factory.connection
         self.username = self.factory.username
         self.password = self.factory.password
-        self.client_method = self.factory.method
+        self.showpass = self.factory.showpass
+        self.client_first_method = self.factory.method
         self.origin = self.factory.origin
         # input - data from the real server
         self.receive = self.factory.serverq
@@ -960,7 +964,7 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
         if self.lastAuth is not "none":
             # Send info about failure to proxy server, and it depends on method
             # kind and order on client side.
-            if (self.lastAuth is not "public"
+            if (self.lastAuth is not "publickey"
                     or self.transport.client_first_method is not "password"):
                 self.transport.transmit.put(False)
 
@@ -981,11 +985,24 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
         self.transport.transmit.put(True)
         return userauth.SSHUserAuthClient.ssh_USERAUTH_SUCCESS(self, packet)
 
+    def show_password(self, password):
+        '''
+        Show password on porxy output if option was true.
+        '''
+        if self.transport.showpass:
+            sys.stderr.write("SSH 'password' is: '%s'" % password)
+
+        return password
+
+
     def getPassword(self, prompt = None):
         '''
-        Return deffered with password from ssh proxy server.
+        Return deffered with password from ssh proxy server and add callback
+        for showing password.
         '''
-        return self.transport.password.get()
+        tmp_deferred = self.transport.password.get()
+        tmp_deferred.addCallback(self.show_password)
+        return tmp_deferred
 
     # TODO: separate client/server keys and use the vars from constructor
     def getPublicKey(self):
