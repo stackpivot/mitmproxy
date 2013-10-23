@@ -561,26 +561,26 @@ class SSHServerFactory(factory.SSHFactory):
 
     # pylint: enable=R0913
 
-    # TODO: separate client/server keys and use the vars from constructor
     def getPublicKeys(self):
         '''
         Provides public keys for proxy server.
         '''
-        if not os.path.exists('keys/id_rsa.pub'):
+        keypath = self.spub
+        if not os.path.exists(keypath):
             raise MITMException(
-                "Private/public eypair not generated in the keys directory.")
+                "Private/public keypair not generated in the keys directory.")
 
-        return {'ssh-rsa': keys.Key.fromFile('keys/id_rsa.pub')}
+        return {'ssh-rsa': keys.Key.fromFile(keypath)}
 
-    # TODO: separate client/server keys and use the vars from constructor
     def getPrivateKeys(self):
         '''
         Provides private keys for proxy server.
         '''
-        if not os.path.exists('keys/id_rsa'):
+        keypath = self.spriv
+        if not os.path.exists(keypath):
             raise MITMException(
-                "Private/public eypair not generated in the keys directory.")
-        return {'ssh-rsa': keys.Key.fromFile('keys/id_rsa')}
+                "Private/public keypair not generated in the keys directory.")
+        return {'ssh-rsa': keys.Key.fromFile(keypath)}
 
     # pylint: enable=R0902
 
@@ -785,13 +785,15 @@ class SSHCredentialsChecker(object):
         #        self.my_factory.port))
 
         # now connect to the real server and begin proxying...
-        client_factory = SSHClientFactory(
-            SSHClientTransport, (self.my_factory.serverq,
-                                 self.my_factory.clientq),
-                                 self.my_factory.log,
-                                 (self.username,
-                                 self.password,
-                                 self.my_factory.showpass))
+        client_factory = SSHClientFactory(SSHClientTransport,
+                                          (self.my_factory.serverq,
+                                          self.my_factory.clientq),
+                                          self.my_factory.log,
+                                          (self.username,
+                                          self.password,
+                                          self.my_factory.showpass),
+                                          (self.my_factory.cpub,
+                                          self.my_factory.cpriv))
         client_factory.connection = self.my_factory.connection
         client_factory.method = self.method
         reactor.connectTCP(self.my_factory.host, self.my_factory.port,
@@ -807,7 +809,7 @@ class SSHClientFactory(protocol.ClientFactory):
     Factory class for proxy SSH client.
     '''
     def __init__(self, proto, (serverq, clientq), log,
-                 (username, password, showpass)):
+                 (username, password, showpass), (cpub, cpriv)):
         # which side we're talking to?
         self.origin = 'server'
         self.protocol = proto
@@ -818,6 +820,8 @@ class SSHClientFactory(protocol.ClientFactory):
         self.password = password
         self.method = "publickey"
         self.showpass = showpass
+        self.cpub = cpub
+        self.cpriv = cpriv
 
         # NOTE: In the future we can let user define how to log conn layer
         self.connection = ProxySSHConnection
@@ -1004,25 +1008,25 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
         tmp_deferred.addCallback(self.show_password)
         return tmp_deferred
 
-    # TODO: separate client/server keys and use the vars from constructor
     def getPublicKey(self):
         '''
         Create PublicKey blob and return it or raise exception.
         '''
-        if not (os.path.exists('keys/id_rsa.pub')):
+        keypath = self.transport.factory.cpub
+        if not (os.path.exists(keypath)):
             raise MITMException(
                 "Public/private keypair not generated in the keys directory.")
-        return keys.Key.fromFile('keys/id_rsa.pub').blob()
+        return keys.Key.fromFile(keypath).blob()
 
-    # TODO: separate client/server keys and use the vars from constructor
     def getPrivateKey(self):
         '''
         Create PrivateKey object and return it or raise exception.
         '''
-        if not (os.path.exists('keys/id_rsa')):
+        keypath = self.transport.factory.cpriv
+        if not (os.path.exists(keypath)):
             raise MITMException(
                 "Public/private keypair not generated in the keys directory.")
-        return defer.succeed(keys.Key.fromFile('keys/id_rsa').keyObject)
+        return defer.succeed(keys.Key.fromFile(keypath).keyObject)
 
 
 # common to both SSH server and client
