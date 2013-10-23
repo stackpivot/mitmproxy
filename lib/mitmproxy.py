@@ -7,9 +7,11 @@ from twisted.internet import protocol, reactor, defer
 
 # Twisted imports for SSH.
 from twisted.conch.ssh import connection, factory, keys, transport, userauth
+from twisted.conch.ssh import session
 from twisted.cred import checkers, credentials, portal
-from twisted.conch import avatar, error
+from twisted.conch import avatar, error, interfaces
 from zope.interface import implements
+from twisted.cred.checkers import AllowAnonymousAccess
 
 # python.log
 from twisted import python
@@ -134,6 +136,39 @@ def replay_option_parser(localport):
         help='Modify response delay (default: %default)')
     opts, args = parser.parse_args()
     return (opts, args)
+
+def ssh_replay_option_parser(localport):
+    '''
+    Default option parser for replay servers
+    '''
+    parser = optparse.OptionParser()
+    parser.add_option(
+        '-p', '--local-port', dest='localport', type='int',
+        metavar='PORT', default=localport,
+        help='Local port to listen on (default: %default)')
+    parser.add_option(
+        '-f', '--from-file', dest='inputfile', type='string',
+        metavar='FILE', default=None,
+        help='Read session capture from FILE instead of STDIN')
+    parser.add_option(
+        '-o', '--output', dest='logfile', type='string',
+        metavar='FILE', default=None,
+        help='Log into FILE instead of STDOUT')
+    parser.add_option(
+        '-d', '--delay-modifier', dest='delaymod', type='float',
+        metavar='FLOAT', default=1.0,
+        help='Modify response delay (default: %default)')
+    parser.add_option(
+        '-b', '--server-pubkey', dest='serverpubkey', type='string',
+        metavar='FILE', default='keys/id_rsa.pub',
+        help='Use FILE as the server pubkey (default: %default)')
+    parser.add_option(
+        '-B', '--server-privkey', dest='serverprivkey', type='string',
+        metavar='FILE', default='keys/id_rsa',
+        help='Use FILE as the server privkey (default: %default)')
+    opts, args = parser.parse_args()
+    return (opts, args)
+
 
 
 def viewer_option_parser():
@@ -447,7 +482,8 @@ class ReplayServerFactory(protocol.ServerFactory):
         self.protocol.success = False
 
 
-def logreader(inputfile, serverq, clientq, clientfirst):
+def logreader(inputfile, serverq=Queue.Queue(), clientq=Queue.Queue(),
+              clientfirst=None):
     '''
     Read the whole proxy log into two separate queues,
     one with the expected client messages (cq) and the
@@ -487,6 +523,7 @@ def logreader(inputfile, serverq, clientq, clientfirst):
                 clientq.put([delay, what])
             else:
                 raise MITMException('Malformed proxy log!')
+    return (serverq, clientq, clientfirst)
 
 
 def logviewer(inputfile, delaymod):
@@ -694,11 +731,11 @@ class Realm(object):
     # pylint: disable=R0903
     implements(portal.IRealm)
 
-    def __init__(self):
+    def __init__(self, avatar=avatar.ConchUser):
         '''
-        Nothing to do
+        Set the default avatar object.
         '''
-        pass
+        self.avatar = avatar
 
     # ignore 'invalid-name', 'no-self-use'
     # pylint: disable=C0103,R0201
@@ -711,7 +748,7 @@ class Realm(object):
         '''
         # ignore 'unused-argument' warning
         # pylint: disable=W0613
-        return interfaces[0], avatar.ConchUser(), lambda: None
+        return interfaces[0], self.avatar(), lambda: None
         # pylint: enable=W0613
 
     # pylint: enable=C0103,R0201,R0903
@@ -1065,7 +1102,181 @@ class ProxySSHConnection(connection.SSHConnection):
 
 # pylint: enable=R0904
 
+class SSHFactory(factory.SSHFactory):
+    '''
+    Base factory class for mitmproxy ssh servers. Create and set your
+    authentication checker or subclass.
 
-# TODO: implement
-class SSHReplayServerFactory(factory.SSHFactory):
-    pass
+    @ivar spub: A path to server public key.
+    @type spub: C{str}
+    @ivar spriv: A path to server private key.
+    @type spriv: C{str}
+    '''
+    def __init__(self, opts):
+        '''
+        SSHFactory construcotr.
+
+        @param opts: Class with atributes opts.logfile, opts.serverpubkey,
+        opts.serverprivkey
+        '''
+        self.log = Logger()
+        if opts.logfile is not None:
+            self.log.open_log(opts.logfile)
+
+        self.spub = opts.serverpubkey
+        self.spriv = opts.serverprivkey
+        self.portal = portal.Portal(Realm())
+
+    def set_authentication_checker(self, checker):
+        '''
+        Set portal's credentials checker.
+        '''
+        self.portal.checkers = {}
+        self.portal.registerChecker(checker)
+
+    def getPublicKeys(self):
+        '''
+        Provide public keys for proxy server.
+        '''
+        keypath = self.spub
+        if not os.path.exists(keypath):
+            raise MITMException(
+                "Private/public keypair not generated in the keys directory.")
+
+        return {'ssh-rsa': keys.Key.fromFile(keypath)}
+
+    def getPrivateKeys(self):
+        '''
+        Provide private keys for proxy server.
+        '''
+        keypath = self.spriv
+        if not os.path.exists(keypath):
+            raise MITMException(
+                "Private/public keypair not generated in the keys directory.")
+        return {'ssh-rsa': keys.Key.fromFile(keypath)}
+
+
+class SSHReplayCredentialsChecker(object):
+    '''
+    Allow access on reply server with publickey or password authentication
+    method.
+    '''
+    # ignore 'too-few-public-methods'
+    # pylint: disable=R0903
+    implements(checkers.ICredentialsChecker)
+    credentialInterfaces = (credentials.ISSHPrivateKey,
+                            credentials.IUsernamePassword,)
+    def __init__(self):
+        '''
+        Nothing to do.
+        '''
+        pass
+
+    # pylint: disable=C0103,W0613,R0201
+    def requestAvatarId(self, creds):
+        '''
+        Return avatar id for any authentication method.
+        '''
+        return "ANONYMOUS"
+
+    # pylint: enable=C0103,R0903,R0201,W0613
+
+
+class SSHReplayServerFactory(SSHFactory):
+    '''
+    Factory class for SSH replay server.
+    '''
+    def __init__(self, opts):
+        '''
+        Initialize base class and SSHReplayServerFactory.
+        '''
+        SSHFactory.__init__(self, opts)
+
+        (serverq, clientq, clientfirst) = logreader(opts.inputfile)
+        self.serverq = serverq
+        self.clientq = clientq
+        self.clientfirst = clientfirst
+        self.delaymod = opts.delaymod
+        self.origin = "client"
+        self.success = False
+
+        self.portal = portal.Portal(Realm(ReplayAvatar))
+        self.portal.registerChecker(SSHReplayCredentialsChecker())
+        self.protocol = SSHReplayServer
+
+
+# pylint: disable=R0904
+class SSHReplayServer(transport.SSHServerTransport):
+    '''
+    Provide service of SSH replay server.
+    '''
+    def __init__(self):
+        '''
+        Nothing to do. Parent class hasn't got constructor.
+        '''
+        pass
+
+    def connectionMade(self):
+        '''
+        Print information message on stderr and call parent method after
+        enstablishing connection.
+        '''
+        sys.stderr.write('Client connected to our server.\n')
+        return transport.SSHServerTransport.connectionMade(self)
+
+    def dispatchMessage(self, messageNum, payload):
+        '''
+        Added extended logging.
+        '''
+        python.log.msg("Received message (%s) from %s with payload: %s " % (
+            messageNum, self.factory.origin, payload.encode('string_escape')))
+        return transport.SSHServerTransport.dispatchMessage(self, messageNum,
+                                                            payload)
+
+    def sendPacket(self, messageType, payload):
+        '''
+        Added extended logging.
+        '''
+        python.log.msg("Sent message (%s) to %s with payload: %s " % (
+            messageType, self.factory.origin, payload.encode('string_escape')))
+
+        return transport.SSHServerTransport.sendPacket(self, messageType,
+                                                       payload)
+# pylint: enable=R0904
+
+
+class EchoProtocol(protocol.Protocol):
+    def dataReceived(self, data):
+        if data == '\r':
+            data = '\r\n'
+        elif data == '\x03': #^C
+            self.transport.loseConnection()
+            return
+        self.transport.write(data)
+
+#TODO: implement
+class ReplayAvatar(avatar.ConchUser):
+    '''
+    Our reply service. Not complete yet.
+    '''
+    implements(interfaces.ISession)
+
+    def __init__(self):
+        avatar.ConchUser.__init__(self)
+        self.username = 'annonymou'
+        self.channelLookup.update({'session':session.SSHSession})
+    def openShell(self, protocol):
+        server_protocol = EchoProtocol()
+        server_protocol.makeConnection(protocol)
+        protocol.makeConnection(session.wrapProtocol(server_protocol))
+    def getPty(self, terminal, windowSize, attrs):
+        return None
+    def execCommand(self, protocol, cmd):
+        raise NotImplementedError
+    def windowChanged(self, newWindowSize):
+        pass
+    def eofReceived(self):
+        pass
+    def closed(self):
+        pass
+
