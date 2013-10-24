@@ -18,14 +18,12 @@ def main():
     (opts, _) = mitmproxy.ssh_replay_option_parser(2222)
 
     if opts.inputfile is None:
-        sys.stderr.write('Need to specify an input file.')
+        sys.stderr.write('Need to specify an input file.\n')
         sys.exit(1)
 
     sys.stderr.write(
         'Server running on localhost:%d\n' % opts.localport)
 
-    from twisted import python
-    python.log.startLogging(sys.stderr)
     factory = mitmproxy.SSHReplayServerFactory(opts)
     reactor.listenTCP(opts.localport, factory)
     reactor.run()

@@ -6,15 +6,11 @@ Common MITM proxy classes.
 from twisted.internet import protocol, reactor, defer
 
 # Twisted imports for SSH.
-from twisted.conch.ssh import connection, factory, keys, transport, userauth
-from twisted.conch.ssh import session
 from twisted.cred import checkers, credentials, portal
 from twisted.conch import avatar, error, interfaces
 from zope.interface import implements
-from twisted.cred.checkers import AllowAnonymousAccess
-
-# python.log
-from twisted import python
+from twisted.conch.ssh import connection, factory, keys, \
+                              transport, userauth, session
 
 import Queue
 import optparse
@@ -137,9 +133,10 @@ def replay_option_parser(localport):
     opts, args = parser.parse_args()
     return (opts, args)
 
+
 def ssh_replay_option_parser(localport):
     '''
-    Default option parser for replay servers
+    Option parser for SSH replay server
     '''
     parser = optparse.OptionParser()
     parser.add_option(
@@ -168,7 +165,6 @@ def ssh_replay_option_parser(localport):
         help='Use FILE as the server privkey (default: %default)')
     opts, args = parser.parse_args()
     return (opts, args)
-
 
 
 def viewer_option_parser():
@@ -650,7 +646,6 @@ class SSHServerTransport(transport.SSHServerTransport):
         self.transmit = self.factory.serverq
 
         transport.SSHServerTransport.connectionMade(self)
-        sys.stderr.write('Client connected.\n')
 
     def connectionLost(self, reason):
         '''
@@ -675,18 +670,12 @@ class SSHServerTransport(transport.SSHServerTransport):
         '''
         transport.SSHServerTransport.dispatchMessage(self, messageNum, payload)
 
-        python.log.msg("Received message (%s) from %s with payload: %s " % (
-            messageNum, self.origin, payload.encode('string_escape')))
-
     def sendPacket(self, messageType, payload):
         '''
         Extending internal logging and set message dispatching between proxy
         components if client successfully authenticated.
         '''
         transport.SSHServerTransport.sendPacket(self, messageType, payload)
-
-        python.log.msg("Sent message (%s) to %s with payload: %s " % (
-            messageType, self.origin, payload.encode('string_escape')))
 
         if messageType == 52:
             # SSH_MSG_USERAUTH_SUCCESS
@@ -748,7 +737,7 @@ class Realm(object):
         '''
         # ignore 'unused-argument' warning
         # pylint: disable=W0613
-        return interfaces[0], self.avatar(), lambda: None
+        return interfaces[0], self.avatar, lambda: None
         # pylint: enable=W0613
 
     # pylint: enable=C0103,R0201,R0903
@@ -817,10 +806,6 @@ class SSHCredentialsChecker(object):
         '''
         Start mitm proxy client.
         '''
-        #sys.stderr.write(
-        #    'Connecting to %s:%d...\n' % (self.my_factory.host,
-        #        self.my_factory.port))
-
         # now connect to the real server and begin proxying...
         client_factory = SSHClientFactory(SSHClientTransport,
                                           (self.my_factory.serverq,
@@ -927,17 +912,11 @@ class SSHClientTransport(transport.SSHClientTransport):
         '''
         transport.SSHClientTransport.dispatchMessage(self, messageNum, payload)
 
-        python.log.msg("Received message (%s) from %s with payload: %s " % (
-            messageNum, self.origin, payload.encode('string_escape')))
-
     def sendPacket(self, messageType, payload):
         '''
         Add internal logging of outgoing packets.
         '''
         transport.SSHClientTransport.sendPacket(self, messageType, payload)
-
-        python.log.msg("Sent message (%s) to %s with payload: %s " % (
-            messageType, self.origin, payload.encode('string_escape')))
 
     def verifyHostKey(self, pubKey, fingerprint):
         '''
@@ -1102,6 +1081,8 @@ class ProxySSHConnection(connection.SSHConnection):
 
 # pylint: enable=R0904
 
+
+# NOTE: do we really need to override this class? why?
 class SSHFactory(factory.SSHFactory):
     '''
     Base factory class for mitmproxy ssh servers. Create and set your
@@ -1200,7 +1181,7 @@ class SSHReplayServerFactory(SSHFactory):
         self.origin = "client"
         self.success = False
 
-        self.portal = portal.Portal(Realm(ReplayAvatar))
+        self.portal = portal.Portal(Realm(ReplayAvatar(self)))
         self.portal.registerChecker(SSHReplayCredentialsChecker())
         self.protocol = SSHReplayServer
 
@@ -1208,28 +1189,25 @@ class SSHReplayServerFactory(SSHFactory):
 # pylint: disable=R0904
 class SSHReplayServer(transport.SSHServerTransport):
     '''
-    Provide service of SSH replay server.
+    Provides SSH replay server service.
     '''
     def __init__(self):
         '''
-        Nothing to do. Parent class hasn't got constructor.
+        Nothing to do. Parent class doesn't have  constructor.
         '''
         pass
 
     def connectionMade(self):
         '''
-        Print information message on stderr and call parent method after
-        enstablishing connection.
+        Print info on stderr and call parent method after
+        establishing connection.
         '''
-        sys.stderr.write('Client connected to our server.\n')
         return transport.SSHServerTransport.connectionMade(self)
 
     def dispatchMessage(self, messageNum, payload):
         '''
         Added extended logging.
         '''
-        python.log.msg("Received message (%s) from %s with payload: %s " % (
-            messageNum, self.factory.origin, payload.encode('string_escape')))
         return transport.SSHServerTransport.dispatchMessage(self, messageNum,
                                                             payload)
 
@@ -1237,38 +1215,30 @@ class SSHReplayServer(transport.SSHServerTransport):
         '''
         Added extended logging.
         '''
-        python.log.msg("Sent message (%s) to %s with payload: %s " % (
-            messageType, self.factory.origin, payload.encode('string_escape')))
 
         return transport.SSHServerTransport.sendPacket(self, messageType,
                                                        payload)
 # pylint: enable=R0904
 
 
-class EchoProtocol(protocol.Protocol):
-    def dataReceived(self, data):
-        if data == '\r':
-            data = '\r\n'
-        elif data == '\x03': #^C
-            self.transport.loseConnection()
-            return
-        self.transport.write(data)
-
-#TODO: implement
 class ReplayAvatar(avatar.ConchUser):
     '''
-    Our reply service. Not complete yet.
+    SSH replay service spawning shell
     '''
     implements(interfaces.ISession)
 
-    def __init__(self):
+    def __init__(self, replayfactory):
+        self.factory = replayfactory
         avatar.ConchUser.__init__(self)
-        self.username = 'annonymou'
+        self.username = 'nobody'
         self.channelLookup.update({'session':session.SSHSession})
     def openShell(self, protocol):
-        server_protocol = EchoProtocol()
-        server_protocol.makeConnection(protocol)
-        protocol.makeConnection(session.wrapProtocol(server_protocol))
+        server_factory = ReplayServerFactory(
+            self.factory.log, (self.factory.serverq, self.factory.clientq),
+            self.factory.delaymod, self.factory.clientfirst)
+        server_factory.protocol = server_factory.protocol()
+        server_factory.protocol.makeConnection(protocol)
+        protocol.makeConnection(session.wrapProtocol(server_factory.protocol))
     def getPty(self, terminal, windowSize, attrs):
         return None
     def execCommand(self, protocol, cmd):
