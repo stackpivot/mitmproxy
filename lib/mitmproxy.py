@@ -412,6 +412,8 @@ class ReplayServer(protocol.Protocol):
                     break
             except Queue.Empty:
                 # both cq and sq empty -> close the session
+                assert self.serverq.empty()
+                assert self.clientq.empty()
                 sys.stderr.write('Success.\n')
                 self.success = True
                 self.log.close_log()
@@ -1193,7 +1195,7 @@ class SSHReplayServer(transport.SSHServerTransport):
     '''
     def __init__(self):
         '''
-        Nothing to do. Parent class doesn't have  constructor.
+        Nothing to do. Parent class doesn't have constructor.
         '''
         pass
 
