@@ -1072,13 +1072,35 @@ class ProxySSHConnection(connection.SSHConnection):
         @param payload: The payload of the message at SSH connection layer.
         @type payload: C{str}
         '''
+        # NOTE: does not distinguish channels,
+        #       could be a problem if multiple channels are used
+        #       (the problem: channel numbers are assigned "randomly")
+
+        # match SSH_MSG_CHANNEL_DATA messages
         if ord(payload[0]) == 94:
             # Payload:
             # byte      SSH_MSG_CHANNEL_DATA (94)
             # uint32    recipient channel
             # string    data    (string = uint32 + string)
 
+            # ssh message type
+            msg = payload[0:1]
+
+            # "pseudo-randomly" assigned channel number,
+            # (almost) always 0x00000000 for shell
+            channel = payload[1:5]
+
+            # length of shell channel data in bytes,
+            # undefined for other channel types
+            datalen = payload[5:9]
+
+            # channel data
             data = payload[9:]
+
+            #sys.stderr.write("packet: %s %s %s %s\n"
+            #    % (msg.encode('hex'), channel.encode('hex'),
+            #    datalen.encode('hex'), data.encode('hex')))
+
             self.transport.log.log(self.transport.origin, data.encode('hex'))
 
 # pylint: enable=R0904
