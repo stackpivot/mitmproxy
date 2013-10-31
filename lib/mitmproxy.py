@@ -1084,7 +1084,6 @@ class ProxySSHConnection(connection.SSHConnection):
 # pylint: enable=R0904
 
 
-# NOTE: do we really need to override this class? why?
 class SSHFactory(factory.SSHFactory):
     '''
     Base factory class for mitmproxy ssh servers. Create and set your
