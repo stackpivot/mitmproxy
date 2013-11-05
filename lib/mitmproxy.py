@@ -11,6 +11,7 @@ from twisted.conch import avatar, error, interfaces
 from zope.interface import implements
 from twisted.conch.ssh import connection, factory, keys, \
                               transport, userauth, session
+from twisted.python import failure
 
 import Queue
 import optparse
@@ -770,7 +771,7 @@ class SSHCredentialsChecker(object):
         Set a callback for user auth success
         '''
         if not hasattr(creds, "username"):
-            raise python.failure.Failure(
+            raise failure.Failure(
                 error.ConchError("Authentication Failed"))
 
         # set username for connect_to_server() method
@@ -799,7 +800,7 @@ class SSHCredentialsChecker(object):
             return self.username
         else:
             # let proxy server know that it should disconnect client
-            raise python.failure.Failure(
+            raise failure.Failure(
                 error.ConchError("Authentication Failed"))
 
     # pylint: enable=W0710
