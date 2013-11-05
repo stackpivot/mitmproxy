@@ -1259,6 +1259,7 @@ class ReplayAvatar(avatar.ConchUser):
         server_factory = ReplayServerFactory(
             self.factory.log, (self.factory.serverq, self.factory.clientq),
             self.factory.delaymod, self.factory.clientfirst)
+        server_factory.protocol = SSHReplayServerProtocol
         server_factory.protocol = server_factory.protocol()
         server_factory.protocol.makeConnection(protocol)
         protocol.makeConnection(session.wrapProtocol(server_factory.protocol))
@@ -1271,5 +1272,26 @@ class ReplayAvatar(avatar.ConchUser):
     def eofReceived(self):
         pass
     def closed(self):
-        pass
+        '''
+        Stop reactor after SSH session is closed.
+        '''
+        terminate()
+
+class SSHReplayServerProtocol(ReplayServer):
+    '''
+    Override ReplayServer protocol, because we can't stop reactor before client
+    sends all messages.
+    '''
+    def __init__(self):
+        ReplayServer.__init__(self)
+
+    def connectionLost(self, reason=protocol.connectionDone):
+        '''
+        Don't terminate reactor like in parent method. It will be terminated
+        at ssh layer.
+        '''
+        if not self.success:
+            sys.stderr.write('FAIL! Premature end: not all messages sent.\n')
+        sys.stderr.write('Client disconnected.\n')
+        self.log.close_log()
 
