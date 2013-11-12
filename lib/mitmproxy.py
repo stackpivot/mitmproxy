@@ -1234,16 +1234,15 @@ class SSHReplayServer(transport.SSHServerTransport):
         '''
         Added extended logging.
         '''
-        return transport.SSHServerTransport.dispatchMessage(self, messageNum,
-                                                            payload)
+        return transport.SSHServerTransport.dispatchMessage(
+            self, messageNum, payload)
 
     def sendPacket(self, messageType, payload):
         '''
         Added extended logging.
         '''
-
-        return transport.SSHServerTransport.sendPacket(self, messageType,
-                                                       payload)
+        return transport.SSHServerTransport.sendPacket(
+            self, messageType, payload)
 # pylint: enable=R0904
 
 
