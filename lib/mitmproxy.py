@@ -232,13 +232,11 @@ class Logger(object):
             self.logfile.write(
                 "%0.10f\t%s\t0x%s\t#%s\n"
                 % (timestamp, who, what, plain))
-            self.logfile.flush()
         else:
             # STDOUT output
             sys.stdout.write(
                 "%0.10f\t%s\t0x%s\t#%s\n"
                 % (timestamp, who, what, plain))
-            sys.stdout.flush()
 
 
 class ProxyProtocol(protocol.Protocol):
