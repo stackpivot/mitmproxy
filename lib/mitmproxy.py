@@ -1292,6 +1292,5 @@ class SSHReplayServerProtocol(ReplayServer):
         '''
         if not self.success:
             sys.stderr.write('FAIL! Premature end: not all messages sent.\n')
-        sys.stderr.write('Client disconnected.\n')
         self.log.close_log()
 
