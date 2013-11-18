@@ -726,7 +726,7 @@ class SSHServerTransport(transport.SSHServerTransport):
         elif self.transmit is not None:
             msgnum = ord(data[0])
             payload = data[1:]
-            # Forward packet to it's intended destination 
+            # Forward packet to it's intended destination
             self.sendPacket(msgnum, payload)
             # In case of disconnect packet we lose connection,
             # otherwise callback for data processing is set up
