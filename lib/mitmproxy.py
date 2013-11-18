@@ -559,8 +559,8 @@ def logviewer(inputfile, delaymod):
 class ProxySSHUserAuthServer(userauth.SSHUserAuthServer):
     '''
     Implements server side of 'ssh-userauth'. Subclass is needed for
-    implementation of transparent authentication trough proxy. Concrete for
-    sending disconnect messages.
+    implementation of transparent authentication trough proxy,
+    concretely for sending disconnect messages.
     '''
     def __init__(self):
         '''
@@ -570,11 +570,11 @@ class ProxySSHUserAuthServer(userauth.SSHUserAuthServer):
 
     def _ebBadAuth(self, reason):
         '''
-        A little proxy authentication hack. Send disconnect if real server send one.
-
-        Override this class because don't have access to transport object in
-        Credentials checker object, so raised exception is catched here and
-        disconnect msg is sent.
+        A little proxy authentication hack.
+        Send disconnect if real server send one.
+        Override this class because we don't have access to transport object
+        in Credentials checker object, so raised exception is caught here
+        and disconnect msg is sent.
         '''
         if reason.check(MITMException):
             self.transport.sendDisconnect(
@@ -726,10 +726,10 @@ class SSHServerTransport(transport.SSHServerTransport):
         elif self.transmit is not None:
             msgnum = ord(data[0])
             payload = data[1:]
-            # Forward packet to original client
+            # Forward packet to it's intended destination 
             self.sendPacket(msgnum, payload)
-            # In case of disconnect packet lose connection otherwise set
-            # callback for data processing
+            # In case of disconnect packet we lose connection,
+            # otherwise callback for data processing is set up
             if msgnum == 1:
                 self.transport.loseConnection()
             else:
@@ -823,8 +823,8 @@ class SSHCredentialsChecker(object):
 
     def is_auth_success(self, result):
         '''
-        Check authentication result from proxy client and raise exception or
-        return username for service.
+        Check authentication result from proxy client and raise exception,
+        or return username for service.
         '''
         assert result in [-1, 0, 1]
         if result == 1:
@@ -901,7 +901,7 @@ class SSHClientTransport(transport.SSHClientTransport):
     '''
     def __init__(self):
         '''
-        Set flag variable for ssh_DISCONNECT method.
+        Set flag for ssh_DISCONNECT method.
         '''
         self.auth_layer = True
 
@@ -927,7 +927,7 @@ class SSHClientTransport(transport.SSHClientTransport):
 
     def ssh_DISCONNECT(self, packet):
         '''
-        Call parent method and onform proxy server about disconnect received
+        Call parent method and inform proxy server about disconnect recieved
         from original server. This information depends on ssh layer.
         '''
         if self.auth_layer:
@@ -1012,8 +1012,8 @@ class SSHClientTransport(transport.SSHClientTransport):
 
 class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
     '''
-    Implements client side of 'ssh-userauth'. Supported authentication methods
-    are publickey and password.
+    Implements client side of 'ssh-userauth'.
+    Supported authentication methods are publickey and password.
     '''
     def __init__(self, user, instance):
         '''
@@ -1023,8 +1023,8 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
 
     def ssh_USERAUTH_FAILURE(self, packet):
         '''
-        Inform the proxy server about auth-method failure and attempt
-        authentificate with method according to original client.
+        Inform the proxy server about auth-method failure and attempt to
+        authenticate with method according to original client.
         '''
         if self.lastAuth is not "none":
             self.transport.transmit.put(0)
