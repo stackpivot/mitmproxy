@@ -756,7 +756,7 @@ class Realm(object):
     # pylint: disable=R0903
     implements(portal.IRealm)
 
-    def __init__(self, avatar=avatar.ConchUser):
+    def __init__(self, avatar=avatar.ConchUser()):
         '''
         Set the default avatar object.
         '''
@@ -1216,10 +1216,11 @@ class SSHFactory(factory.SSHFactory):
         return {'ssh-rsa': keys.Key.fromFile(keypath)}
 
 
-class SSHReplayCredentialsChecker(object):
+class ReplaySSHCredentialsChecker(object):
     '''
     Allow access on reply server with publickey or password authentication
-    method.
+    method. This class do nothing useful, but it must be implemented because of
+    twisted authentication framework.
     '''
     # ignore 'too-few-public-methods'
     # pylint: disable=R0903
@@ -1251,22 +1252,20 @@ class SSHReplayServerFactory(SSHFactory):
         Initialize base class and SSHReplayServerFactory.
         '''
         SSHFactory.__init__(self, opts)
+        self.protocol = ReplaySSHServerTransport
 
+        # create our service (Replay) protocol
         (serverq, clientq, clientfirst) = logreader(opts.inputfile)
-        self.serverq = serverq
-        self.clientq = clientq
-        self.clientfirst = clientfirst
-        self.delaymod = opts.delaymod
-        self.origin = "client"
-        self.success = False
-
-        self.portal = portal.Portal(Realm(ReplayAvatar(self)))
-        self.portal.registerChecker(SSHReplayCredentialsChecker())
-        self.protocol = SSHReplayServer
+        replay_factory = ReplayServerFactory(self.log, (serverq, clientq),
+                opts.delaymod, clientfirst)
+        replay_factory.protocol = SSHReplayServerProtocol
+        self.avatar = ReplayAvatar(replay_factory.protocol())
+        self.portal = portal.Portal(Realm(self.avatar))
+        self.portal.registerChecker(ReplaySSHCredentialsChecker())
 
 
 # pylint: disable=R0904
-class SSHReplayServer(transport.SSHServerTransport):
+class ReplaySSHServerTransport(transport.SSHServerTransport):
     '''
     Provides SSH replay server service.
     '''
@@ -1305,19 +1304,13 @@ class ReplayAvatar(avatar.ConchUser):
     '''
     implements(interfaces.ISession)
 
-    def __init__(self, replayfactory):
-        self.factory = replayfactory
+    def __init__(self, service_protocol):
         avatar.ConchUser.__init__(self)
-        self.username = 'nobody'
         self.channelLookup.update({'session':session.SSHSession})
+        self.service_protocol = service_protocol
     def openShell(self, protocol):
-        server_factory = ReplayServerFactory(
-            self.factory.log, (self.factory.serverq, self.factory.clientq),
-            self.factory.delaymod, self.factory.clientfirst)
-        server_factory.protocol = SSHReplayServerProtocol
-        server_factory.protocol = server_factory.protocol()
-        server_factory.protocol.makeConnection(protocol)
-        protocol.makeConnection(session.wrapProtocol(server_factory.protocol))
+        self.service_protocol.makeConnection(protocol)
+        protocol.makeConnection(session.wrapProtocol(self.service_protocol))
     def getPty(self, terminal, windowSize, attrs):
         return None
     def execCommand(self, protocol, cmd):
