@@ -9,7 +9,7 @@ from twisted.internet import protocol, reactor, defer
 from twisted.cred import checkers, credentials, portal
 from twisted.conch import avatar, error, interfaces
 from zope.interface import implements
-from twisted.conch.ssh import connection, factory, keys, \
+from twisted.conch.ssh import common, connection, factory, keys, \
                               transport, userauth, session
 from twisted.python import failure
 
@@ -556,8 +556,35 @@ def logviewer(inputfile, delaymod):
 # SSH related stuff #
 #####################
 
-# SSH proxy server
+class ProxySSHUserAuthServer(userauth.SSHUserAuthServer):
+    '''
+    Implements server side of 'ssh-userauth'. Subclass is needed for
+    implementation of transparent authentication trough proxy. Concrete for
+    sending disconnect messages.
+    '''
+    def __init__(self):
+        '''
+        Set password delay.
+        '''
+        self.passwordDelay = 0
 
+    def _ebBadAuth(self, reason):
+        '''
+        A little proxy authentication hack. Send disconnect if real server send one.
+
+        Override this class because don't have access to transport object in
+        Credentials checker object, so raised exception is catched here and
+        disconnect msg is sent.
+        '''
+        if reason.check(MITMException):
+            self.transport.sendDisconnect(
+                    transport.DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE,
+                    'too many bad auths')
+            return
+        userauth.SSHUserAuthServer._ebBadAuth(self, reason)
+
+
+# SSH proxy server
 class SSHServerFactory(factory.SSHFactory):
     '''
     Factory class for proxy SSH server.
@@ -588,7 +615,7 @@ class SSHServerFactory(factory.SSHFactory):
         self.showpass = showpass
 
         self.services = {
-            'ssh-userauth':userauth.SSHUserAuthServer,
+            'ssh-userauth':ProxySSHUserAuthServer,
             'ssh-connection':self.connection,
         }
 
@@ -697,10 +724,16 @@ class SSHServerTransport(transport.SSHServerTransport):
             self.transport.loseConnection()
             # the reactor should be stopping just about now
         elif self.transmit is not None:
-            # Transmit queue is defined => connection to
-            # the other side is still open, we can send data to it.
-            self.sendPacket(ord(data[0]), data[1:])
-            self.receive.get().addCallback(self.proxy_data_received)
+            msgnum = ord(data[0])
+            payload = data[1:]
+            # Forward packet to original client
+            self.sendPacket(msgnum, payload)
+            # In case of disconnect packet lose connection otherwise set
+            # callback for data processing
+            if msgnum == 1:
+                self.transport.loseConnection()
+            else:
+                self.receive.get().addCallback(self.proxy_data_received)
         else:
             # got some data to be sent, but we no longer
             # have a connection to the other side
@@ -758,10 +791,9 @@ class SSHCredentialsChecker(object):
     def __init__(self, my_factory):
         self.my_factory = my_factory
         self.receive = self.my_factory.clientq
+        self.transmit = self.my_factory.serverq
         self.password = defer.DeferredQueue()
-        # Need to know authentication method. Currently (publickey, password).
-        self.method = None
-
+        self.connected = False
     # ignore 'invalid-method-name'
     # pylint: disable=C0103
     # ignore 'nonstandard-exception'
@@ -770,38 +802,42 @@ class SSHCredentialsChecker(object):
         '''
         Set a callback for user auth success
         '''
-        if not hasattr(creds, "username"):
-            raise failure.Failure(
-                error.ConchError("Authentication Failed"))
-
+        assert hasattr(creds, "username")
         # set username for connect_to_server() method
         self.username = creds.username
+        # set callback for evaluation of authentication result
         deferred = self.receive.get().addCallback(self.is_auth_success)
-
-        if hasattr(creds, "password"):
+        # inform proxy client about authentication method
+        if hasattr(creds, 'password'):
+            # password for proxy client
             self.password.put(creds.password)
-            if self.method == None:
-                self.method = "password"
-                self.connect_to_server()
-
-        if self.method == None:
-            self.method = "publickey"
+            self.transmit.put('password')
+        else:
+            self.transmit.put('publickey')
+        if not self.connected:
             self.connect_to_server()
-
+            self.connected = True
         return deferred
 
     # pylint: enable=C0103
 
     def is_auth_success(self, result):
         '''
-        Check authentication result from proxy client.
+        Check authentication result from proxy client and raise exception or
+        return username for service.
         '''
-        if result:
+        assert result in [-1, 0, 1]
+        if result == 1:
+            # Auth success
             return self.username
-        else:
-            # let proxy server know that it should disconnect client
+        elif result == 0:
+            # Authentication Failure, so initiate another authentication
+            # attempt with this exception.
+            raise failure.Failure(error.UnauthorizedLogin)
+        elif result == -1:
+            # Received disconnect from server.
             raise failure.Failure(
-                error.ConchError("Authentication Failed"))
+                    MITMException("No more authentication methods"))
 
     # pylint: enable=W0710
 
@@ -820,7 +856,6 @@ class SSHCredentialsChecker(object):
                                           (self.my_factory.cpub,
                                           self.my_factory.cpriv))
         client_factory.connection = self.my_factory.connection
-        client_factory.method = self.method
         reactor.connectTCP(self.my_factory.host, self.my_factory.port,
                            client_factory)
 
@@ -866,9 +901,9 @@ class SSHClientTransport(transport.SSHClientTransport):
     '''
     def __init__(self):
         '''
-        Nothing to do
+        Set flag variable for ssh_DISCONNECT method.
         '''
-        pass
+        self.auth_layer = True
 
     def connectionMade(self):
         '''
@@ -887,11 +922,19 @@ class SSHClientTransport(transport.SSHClientTransport):
         self.transmit = self.factory.clientq
         self.log = self.factory.log
 
-        # callback for the receiver queue
-        self.receive.get().addCallback(self.proxy_data_received)
-
         transport.SSHClientTransport.connectionMade(self)
         sys.stderr.write('Connected to real server.\n')
+
+    def ssh_DISCONNECT(self, packet):
+        '''
+        Call parent method and onform proxy server about disconnect received
+        from original server. This information depends on ssh layer.
+        '''
+        if self.auth_layer:
+            self.transmit.put(-1)
+        else:
+            self.transmit.put(packet)
+        transport.SSHClientTransport.ssh_DISCONNECT(self, packet)
 
     def connectionLost(self, reason):
         '''
@@ -906,8 +949,6 @@ class SSHClientTransport(transport.SSHClientTransport):
         self.receive = None
         # put a special value into tx queue to indicate connecion loss
         self.transmit.put(False)
-        # stop the program
-        terminate()
 
     def dispatchMessage(self, messageNum, payload):
         '''
@@ -971,7 +1012,8 @@ class SSHClientTransport(transport.SSHClientTransport):
 
 class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
     '''
-    Implements client side of 'ssh-userauth'.
+    Implements client side of 'ssh-userauth'. Supported authentication methods
+    are publickey and password.
     '''
     def __init__(self, user, instance):
         '''
@@ -981,32 +1023,45 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
 
     def ssh_USERAUTH_FAILURE(self, packet):
         '''
-        Let the proxy server know about auth-method failure.
-        Fix bug in parent class' method.
+        Inform the proxy server about auth-method failure and attempt
+        authentificate with method according to original client.
         '''
         if self.lastAuth is not "none":
-            # Send info about failure to proxy server, and it depends on method
-            # kind and order on client side.
-            if (self.lastAuth is not "publickey"
-                    or self.transport.client_first_method is not "password"):
-                self.transport.transmit.put(False)
+            self.transport.transmit.put(0)
+        # Supported server methods.
+        can_continue, _ = common.getNS(packet)
+        # Get method name trought Deffered object.
+        deferred_method = self.transport.receive.get()
+        deferred_method.addCallback(self.try_method, can_continue)
+        return deferred_method
 
-        from twisted.conch.ssh.common import getNS
-        _, partial = getNS(packet)
-        partial = ord(partial)
-        # if partial: <<< so nasty BUG!!!
-        if not partial: # fix
-            self.authenticatedWith.append(self.lastAuth)
+    def try_method(self, method, can_continue):
+        '''
+        Try authentication method received from proxy server and return boolean
+        result.
+        '''
+        assert method in ['publickey', 'password', False]
+        # False means no more authentication methods or client disconnected.
+        # Proxy server may terminate reactor before proxy client send
+        # DISCONNECT_MSG, but it doesn't matter.
+        if method == False:
+            can_continue = []
+        else:
+            can_continue = [method]
+        return self._cbUserauthFailure(None, iter(can_continue))
 
-        return userauth.SSHUserAuthClient.ssh_USERAUTH_FAILURE(self, packet)
 
     def ssh_USERAUTH_SUCCESS(self, packet):
         '''
-        Let the proxy server know about auth-method success and call parent
-        method.
+        Add new callback for processing data from proxy server, inform proxy
+        server about authentication method success and call parent method.
         '''
-        self.transport.transmit.put(True)
-        return userauth.SSHUserAuthClient.ssh_USERAUTH_SUCCESS(self, packet)
+        self.transport.receive.get().addCallback(
+                self.transport.proxy_data_received)
+        self.transport.auth_layer = False
+        self.transport.transmit.put(1)
+        userauth.SSHUserAuthClient.ssh_USERAUTH_SUCCESS(self, packet)
+
 
     def show_password(self, password):
         '''
