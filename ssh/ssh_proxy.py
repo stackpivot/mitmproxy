@@ -23,11 +23,7 @@ def main():
     sys.stderr.write(
         'Server running on localhost:%d...\n' % (opts.localport))
 
-    factory = mitmproxy.SSHServerFactory(
-        mitmproxy.SSHServerTransport, (opts.host, opts.port),
-        log, opts.showpassword,
-        (opts.clientpubkey, opts.clientprivkey),
-        (opts.serverpubkey, opts.serverprivkey))
+    factory = mitmproxy.SSHServerFactory(opts)
     reactor.listenTCP(opts.localport, factory)
     reactor.run()
 

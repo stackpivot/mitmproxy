@@ -24,7 +24,7 @@ def main():
     sys.stderr.write(
         'Server running on localhost:%d\n' % opts.localport)
 
-    factory = mitmproxy.SSHReplayServerFactory(opts)
+    factory = mitmproxy.ReplaySSHServerFactory(opts)
     reactor.listenTCP(opts.localport, factory)
     reactor.run()
 

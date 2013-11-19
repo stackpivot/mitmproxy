@@ -560,7 +560,7 @@ def logviewer(inputfile, delaymod):
 # SSH Transport Layer Classes
 #   * SSHFactory
 #   * SSHServerFactory
-#   * SSHReplayServerFactory
+#   * ReplaySSHServerFactory
 #   * SSHClientFactory
 #   * SSHServerTransport
 #   * SSHClientTransport
@@ -568,8 +568,9 @@ def logviewer(inputfile, delaymod):
 ################################################################################
 class SSHFactory(factory.SSHFactory):
     '''
-    Base factory class for mitmproxy ssh servers. Create and set your
-    authentication checker or subclass and set your attributes and protal.
+    Base factory class for mitmproxy ssh servers. Set defualt ssh protocol and
+    object attributes. Create and set your authentication checker or subclass
+    and override defaults: protocol, services, portal, checker and attributes.
 
     @ivar spub: A path to server public key.
     @type spub: C{str}
@@ -584,13 +585,20 @@ class SSHFactory(factory.SSHFactory):
         opts.logfile (path to logfile), opts.serverpubkey (path to server
         public key), opts.serverprivkey (path to server private key)
         '''
+        # Default ssh protocol, realm and services.
+        self.protocol = transport.SSHServerTransport
+        self.services = {
+            'ssh-userauth':userauth.SSHUserAuthServer,
+            'ssh-connection':connection.SSHConnection,
+        }
+        self.portal = portal.Portal(Realm())
+
+        # Defaut attributes.
         self.log = Logger()
         if opts.logfile is not None:
             self.log.open_log(opts.logfile)
-
         self.spub = opts.serverpubkey
         self.spriv = opts.serverprivkey
-        self.portal = portal.Portal(Realm())
 
     def set_authentication_checker(self, checker):
         '''
@@ -621,86 +629,64 @@ class SSHFactory(factory.SSHFactory):
         return {'ssh-rsa': keys.Key.fromFile(keypath)}
 
 
-class SSHServerFactory(factory.SSHFactory):
+class SSHServerFactory(SSHFactory):
     '''
     Factory class for proxy SSH server.
-
-    If you want to implement your own logger of SSH Connection layer, subclass
-    ProxySSHConnection and override log_channel_communication() method.
-    Then set factory atribute after factory creation.
-    Example:
-        factory.connection = SubclassProxySSHConnection
     '''
     # ignore 'too-many-instance-attributes', 'too-many-arguments'
     # pylint: disable=R0902,R0913
-    def __init__(
-        self, proto, (host, port), log, showpass, (cpub, cpriv), (spub, spriv)):
-        # Default is our ProxySSHConnection without logging implementation.
-        self.origin = 'client'
-        self.protocol = proto
-        self.host = host
-        self.port = port
-        self.log = log
-        self.serverq = defer.DeferredQueue()
-        self.clientq = defer.DeferredQueue()
-        self.cpub = cpub
-        self.cpriv = cpriv
-        self.spub = spub
-        self.spriv = spriv
-        self.showpass = showpass
+    def __init__(self, opts):
+        '''
+        Initialize base class and override defualt protocol, services and set
+        attributes and credentials checker.
+        '''
+        SSHFactory.__init__(self, opts)
 
+        # Override default protocol and services
+        self.protocol = SSHServerTransport
         self.services = {
             'ssh-userauth':ProxySSHUserAuthServer,
             'ssh-connection':ProxySSHConnection,
         }
 
-        self.portal = portal.Portal(Realm())
-        self.portal.registerChecker(SSHCredentialsChecker(self))
+        # Our attribute settings
+        self.host = opts.host
+        self.port = opts.port
+        self.cpub = opts.clientpubkey
+        self.cpriv = opts.clientprivkey
+        self.showpass = opts.showpassword
+        self.origin = 'client'
+        self.serverq = defer.DeferredQueue()
+        self.clientq = defer.DeferredQueue()
 
+        # Set our credentials checker.
+        self.set_authentication_checker(SSHCredentialsChecker(self))
     # pylint: enable=R0913
-
-    def getPublicKeys(self):
-        '''
-        Provides public keys for proxy server.
-        '''
-        keypath = self.spub
-        if not os.path.exists(keypath):
-            raise MITMException(
-                "Private/public keypair not generated in the keys directory.")
-
-        return {'ssh-rsa': keys.Key.fromFile(keypath)}
-
-    def getPrivateKeys(self):
-        '''
-        Provides private keys for proxy server.
-        '''
-        keypath = self.spriv
-        if not os.path.exists(keypath):
-            raise MITMException(
-                "Private/public keypair not generated in the keys directory.")
-        return {'ssh-rsa': keys.Key.fromFile(keypath)}
-
     # pylint: enable=R0902
 
 
-class SSHReplayServerFactory(SSHFactory):
+class ReplaySSHServerFactory(SSHFactory):
     '''
     Factory class for SSH replay server.
     '''
     def __init__(self, opts):
         '''
-        Initialize base class and SSHReplayServerFactory.
+        Initialize base class and override protocol, portal and credentials
+        checker.
         '''
         SSHFactory.__init__(self, opts)
         self.protocol = ReplaySSHServerTransport
 
-        # create our service (Replay) protocol
+        # Create our service ReplayAvatar for portal.
         (serverq, clientq, clientfirst) = logreader(opts.inputfile)
-        replay_factory = ReplayServerFactory(self.log, (serverq, clientq), opts.delaymod, clientfirst)
+        replay_factory = ReplayServerFactory(self.log, (serverq, clientq),
+                opts.delaymod, clientfirst)
         replay_factory.protocol = SSHReplayServerProtocol
         self.avatar = ReplayAvatar(replay_factory.protocol())
+
+        # Override default protal and credentials checker.
         self.portal = portal.Portal(Realm(self.avatar))
-        self.portal.registerChecker(ReplaySSHCredentialsChecker())
+        self.set_authentication_checker(ReplaySSHCredentialsChecker())
 
 
 # ignore 'too-many-instance-attributes'
