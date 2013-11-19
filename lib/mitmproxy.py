@@ -600,7 +600,6 @@ class SSHServerFactory(factory.SSHFactory):
     def __init__(
         self, proto, (host, port), log, showpass, (cpub, cpriv), (spub, spriv)):
         # Default is our ProxySSHConnection without logging implementation.
-        self.connection = ProxySSHConnection
         self.origin = 'client'
         self.protocol = proto
         self.host = host
@@ -616,7 +615,7 @@ class SSHServerFactory(factory.SSHFactory):
 
         self.services = {
             'ssh-userauth':ProxySSHUserAuthServer,
-            'ssh-connection':self.connection,
+            'ssh-connection':ProxySSHConnection,
         }
 
         self.portal = portal.Portal(Realm())
@@ -855,7 +854,6 @@ class SSHCredentialsChecker(object):
                                           self.my_factory.showpass),
                                           (self.my_factory.cpub,
                                           self.my_factory.cpriv))
-        client_factory.connection = self.my_factory.connection
         reactor.connectTCP(self.my_factory.host, self.my_factory.port,
                            client_factory)
 
@@ -883,9 +881,6 @@ class SSHClientFactory(protocol.ClientFactory):
         self.cpub = cpub
         self.cpriv = cpriv
 
-        # NOTE: In the future we can let user define how to log conn layer
-        self.connection = ProxySSHConnection
-
     def clientConnectionFailed(self, connector, reason):
         self.clientq.put(False)
         sys.stderr.write('Unable to connect! %s\n' % reason.getErrorMessage())
@@ -910,7 +905,6 @@ class SSHClientTransport(transport.SSHClientTransport):
         Call parent method after enstablishing connection and make some
         initialization.
         '''
-        self.connection = self.factory.connection
         self.username = self.factory.username
         self.password = self.factory.password
         self.showpass = self.factory.showpass
@@ -979,7 +973,7 @@ class SSHClientTransport(transport.SSHClientTransport):
         '''
         self.requestService(
             ProxySSHUserAuthClient(
-                self.username, self.connection()))
+                self.username, ProxySSHConnection()))
 
     def proxy_data_received(self, data):
         '''
