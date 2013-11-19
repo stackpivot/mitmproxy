@@ -695,20 +695,18 @@ class SSHClientFactory(protocol.ClientFactory):
     '''
     Factory class for proxy SSH client.
     '''
-    def __init__(self, proto, (serverq, clientq), log,
-                 (username, password, showpass), (cpub, cpriv)):
+    def __init__(self, proto, proxy_factory, username, password):
         # which side we're talking to?
         self.origin = 'server'
         self.protocol = proto
-        self.serverq = serverq
-        self.clientq = clientq
-        self.log = log
+        self.serverq = proxy_factory.serverq
+        self.clientq = proxy_factory.clientq
+        self.log = proxy_factory.log
         self.username = username
         self.password = password
-        self.method = "publickey"
-        self.showpass = showpass
-        self.cpub = cpub
-        self.cpriv = cpriv
+        self.showpass = proxy_factory.showpass
+        self.cpub = proxy_factory.cpub
+        self.cpriv = proxy_factory.cpriv
 
     def clientConnectionFailed(self, connector, reason):
         self.clientq.put(False)
@@ -836,7 +834,6 @@ class SSHClientTransport(transport.SSHClientTransport):
         self.username = self.factory.username
         self.password = self.factory.password
         self.showpass = self.factory.showpass
-        self.client_first_method = self.factory.method
         self.origin = self.factory.origin
         # input - data from the real server
         self.receive = self.factory.serverq
@@ -1104,10 +1101,10 @@ class SSHCredentialsChecker(object):
     credentialInterfaces = (credentials.ISSHPrivateKey,
                             credentials.IUsernamePassword,)
 
-    def __init__(self, my_factory):
-        self.my_factory = my_factory
-        self.receive = self.my_factory.clientq
-        self.transmit = self.my_factory.serverq
+    def __init__(self, proxy_factory):
+        self.proxy_factory = proxy_factory
+        self.receive = self.proxy_factory.clientq
+        self.transmit = self.proxy_factory.serverq
         self.password = defer.DeferredQueue()
         self.connected = False
     # ignore 'invalid-method-name'
@@ -1163,15 +1160,10 @@ class SSHCredentialsChecker(object):
         '''
         # now connect to the real server and begin proxying...
         client_factory = SSHClientFactory(SSHClientTransport,
-                                          (self.my_factory.serverq,
-                                          self.my_factory.clientq),
-                                          self.my_factory.log,
-                                          (self.username,
-                                          self.password,
-                                          self.my_factory.showpass),
-                                          (self.my_factory.cpub,
-                                          self.my_factory.cpriv))
-        reactor.connectTCP(self.my_factory.host, self.my_factory.port,
+                                          self.proxy_factory,
+                                          self.username,
+                                          self.password)
+        reactor.connectTCP(self.proxy_factory.host, self.proxy_factory.port,
                            client_factory)
 
 
