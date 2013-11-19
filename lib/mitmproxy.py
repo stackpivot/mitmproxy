@@ -556,35 +556,71 @@ def logviewer(inputfile, delaymod):
 # SSH related stuff #
 #####################
 
-class ProxySSHUserAuthServer(userauth.SSHUserAuthServer):
+################################################################################
+# SSH Transport Layer Classes
+#   * SSHFactory
+#   * SSHServerFactory
+#   * SSHReplayServerFactory
+#   * SSHClientFactory
+#   * SSHServerTransport
+#   * SSHClientTransport
+#   * ReplaySSHServerTransport
+################################################################################
+class SSHFactory(factory.SSHFactory):
     '''
-    Implements server side of 'ssh-userauth'. Subclass is needed for
-    implementation of transparent authentication trough proxy,
-    concretely for sending disconnect messages.
+    Base factory class for mitmproxy ssh servers. Create and set your
+    authentication checker or subclass and set your attributes and protal.
+
+    @ivar spub: A path to server public key.
+    @type spub: C{str}
+    @ivar spriv: A path to server private key.
+    @type spriv: C{str}
     '''
-    def __init__(self):
+    def __init__(self, opts):
         '''
-        Set password delay.
-        '''
-        self.passwordDelay = 0
+        SSHFactory construcotr.
 
-    def _ebBadAuth(self, reason):
+        @param opts: Class created by some ssh option parser with atributes
+        opts.logfile (path to logfile), opts.serverpubkey (path to server
+        public key), opts.serverprivkey (path to server private key)
         '''
-        A little proxy authentication hack.
-        Send disconnect if real server send one.
-        Override this class because we don't have access to transport object
-        in Credentials checker object, so raised exception is caught here
-        and disconnect msg is sent.
+        self.log = Logger()
+        if opts.logfile is not None:
+            self.log.open_log(opts.logfile)
+
+        self.spub = opts.serverpubkey
+        self.spriv = opts.serverprivkey
+        self.portal = portal.Portal(Realm())
+
+    def set_authentication_checker(self, checker):
         '''
-        if reason.check(MITMException):
-            self.transport.sendDisconnect(
-                    transport.DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE,
-                    'too many bad auths')
-            return
-        userauth.SSHUserAuthServer._ebBadAuth(self, reason)
+        Set portal's credentials checker.
+        '''
+        self.portal.checkers = {}
+        self.portal.registerChecker(checker)
+
+    def getPublicKeys(self):
+        '''
+        Provide public keys for proxy server.
+        '''
+        keypath = self.spub
+        if not os.path.exists(keypath):
+            raise MITMException(
+                "Private/public keypair not generated in the keys directory.")
+
+        return {'ssh-rsa': keys.Key.fromFile(keypath)}
+
+    def getPrivateKeys(self):
+        '''
+        Provide private keys for proxy server.
+        '''
+        keypath = self.spriv
+        if not os.path.exists(keypath):
+            raise MITMException(
+                "Private/public keypair not generated in the keys directory.")
+        return {'ssh-rsa': keys.Key.fromFile(keypath)}
 
 
-# SSH proxy server
 class SSHServerFactory(factory.SSHFactory):
     '''
     Factory class for proxy SSH server.
@@ -645,6 +681,56 @@ class SSHServerFactory(factory.SSHFactory):
         return {'ssh-rsa': keys.Key.fromFile(keypath)}
 
     # pylint: enable=R0902
+
+
+class SSHReplayServerFactory(SSHFactory):
+    '''
+    Factory class for SSH replay server.
+    '''
+    def __init__(self, opts):
+        '''
+        Initialize base class and SSHReplayServerFactory.
+        '''
+        SSHFactory.__init__(self, opts)
+        self.protocol = ReplaySSHServerTransport
+
+        # create our service (Replay) protocol
+        (serverq, clientq, clientfirst) = logreader(opts.inputfile)
+        replay_factory = ReplayServerFactory(self.log, (serverq, clientq), opts.delaymod, clientfirst)
+        replay_factory.protocol = SSHReplayServerProtocol
+        self.avatar = ReplayAvatar(replay_factory.protocol())
+        self.portal = portal.Portal(Realm(self.avatar))
+        self.portal.registerChecker(ReplaySSHCredentialsChecker())
+
+
+# ignore 'too-many-instance-attributes'
+# pylint: disable=R0902
+class SSHClientFactory(protocol.ClientFactory):
+    '''
+    Factory class for proxy SSH client.
+    '''
+    def __init__(self, proto, (serverq, clientq), log,
+                 (username, password, showpass), (cpub, cpriv)):
+        # which side we're talking to?
+        self.origin = 'server'
+        self.protocol = proto
+        self.serverq = serverq
+        self.clientq = clientq
+        self.log = log
+        self.username = username
+        self.password = password
+        self.method = "publickey"
+        self.showpass = showpass
+        self.cpub = cpub
+        self.cpriv = cpriv
+
+    def clientConnectionFailed(self, connector, reason):
+        self.clientq.put(False)
+        sys.stderr.write('Unable to connect! %s\n' % reason.getErrorMessage())
+
+
+# ignore 'too-many-public-methods'
+# pylint: disable=R0904,R0902
 
 
 class SSHServerTransport(transport.SSHServerTransport):
@@ -744,150 +830,6 @@ class SSHServerTransport(transport.SSHServerTransport):
 
     # pylint: enable=R0904
 
-class Realm(object):
-    '''
-    The realm connects application-specific objects to the authentication
-    system.
-
-    Realm connects our service and authentication methods.
-    '''
-    # ignore 'too-few-public-methods'
-    # pylint: disable=R0903
-    implements(portal.IRealm)
-
-    def __init__(self, avatar=avatar.ConchUser()):
-        '''
-        Set the default avatar object.
-        '''
-        self.avatar = avatar
-
-    # ignore 'invalid-name', 'no-self-use'
-    # pylint: disable=C0103,R0201
-    def requestAvatar(self, avatarId, mind, *interfaces):
-        '''
-        Return object which provides one of the given interfaces of service.
-
-        Our object provides no service interface and even won't be used, but
-        this is needed for proper twisted ssh authentication mechanism.
-        '''
-        # ignore 'unused-argument' warning
-        # pylint: disable=W0613
-        return interfaces[0], self.avatar, lambda: None
-        # pylint: enable=W0613
-
-    # pylint: enable=C0103,R0201,R0903
-
-
-class SSHCredentialsChecker(object):
-    '''
-    Implement publickey and password authentication method on proxy server
-    side.
-    '''
-    implements(checkers.ICredentialsChecker)
-    credentialInterfaces = (credentials.ISSHPrivateKey,
-                            credentials.IUsernamePassword,)
-
-    def __init__(self, my_factory):
-        self.my_factory = my_factory
-        self.receive = self.my_factory.clientq
-        self.transmit = self.my_factory.serverq
-        self.password = defer.DeferredQueue()
-        self.connected = False
-    # ignore 'invalid-method-name'
-    # pylint: disable=C0103
-    # ignore 'nonstandard-exception'
-    # pylint: disable=W0710
-    def requestAvatarId(self, creds):
-        '''
-        Set a callback for user auth success
-        '''
-        assert hasattr(creds, "username")
-        # set username for connect_to_server() method
-        self.username = creds.username
-        # set callback for evaluation of authentication result
-        deferred = self.receive.get().addCallback(self.is_auth_success)
-        # inform proxy client about authentication method
-        if hasattr(creds, 'password'):
-            # password for proxy client
-            self.password.put(creds.password)
-            self.transmit.put('password')
-        else:
-            self.transmit.put('publickey')
-        if not self.connected:
-            self.connect_to_server()
-            self.connected = True
-        return deferred
-
-    # pylint: enable=C0103
-
-    def is_auth_success(self, result):
-        '''
-        Check authentication result from proxy client and raise exception,
-        or return username for service.
-        '''
-        assert result in [-1, 0, 1]
-        if result == 1:
-            # Auth success
-            return self.username
-        elif result == 0:
-            # Authentication Failure, so initiate another authentication
-            # attempt with this exception.
-            raise failure.Failure(error.UnauthorizedLogin)
-        elif result == -1:
-            # Received disconnect from server.
-            raise failure.Failure(
-                    MITMException("No more authentication methods"))
-
-    # pylint: enable=W0710
-
-    def connect_to_server(self):
-        '''
-        Start mitm proxy client.
-        '''
-        # now connect to the real server and begin proxying...
-        client_factory = SSHClientFactory(SSHClientTransport,
-                                          (self.my_factory.serverq,
-                                          self.my_factory.clientq),
-                                          self.my_factory.log,
-                                          (self.username,
-                                          self.password,
-                                          self.my_factory.showpass),
-                                          (self.my_factory.cpub,
-                                          self.my_factory.cpriv))
-        reactor.connectTCP(self.my_factory.host, self.my_factory.port,
-                           client_factory)
-
-
-# SSH proxy client.
-
-# ignore 'too-many-instance-attributes'
-# pylint: disable=R0902
-class SSHClientFactory(protocol.ClientFactory):
-    '''
-    Factory class for proxy SSH client.
-    '''
-    def __init__(self, proto, (serverq, clientq), log,
-                 (username, password, showpass), (cpub, cpriv)):
-        # which side we're talking to?
-        self.origin = 'server'
-        self.protocol = proto
-        self.serverq = serverq
-        self.clientq = clientq
-        self.log = log
-        self.username = username
-        self.password = password
-        self.method = "publickey"
-        self.showpass = showpass
-        self.cpub = cpub
-        self.cpriv = cpriv
-
-    def clientConnectionFailed(self, connector, reason):
-        self.clientq.put(False)
-        sys.stderr.write('Unable to connect! %s\n' % reason.getErrorMessage())
-
-
-# ignore 'too-many-public-methods'
-# pylint: disable=R0904,R0902
 
 class SSHClientTransport(transport.SSHClientTransport):
     '''
@@ -1004,6 +946,76 @@ class SSHClientTransport(transport.SSHClientTransport):
 # pylint: enable=R0904
 
 
+# pylint: disable=R0904
+class ReplaySSHServerTransport(transport.SSHServerTransport):
+    '''
+    Provides SSH replay server service.
+    '''
+    def __init__(self):
+        '''
+        Nothing to do. Parent class doesn't have constructor.
+        '''
+        pass
+
+    def connectionMade(self):
+        '''
+        Print info on stderr and call parent method after
+        establishing connection.
+        '''
+        return transport.SSHServerTransport.connectionMade(self)
+
+    def dispatchMessage(self, messageNum, payload):
+        '''
+        Added extended logging.
+        '''
+        return transport.SSHServerTransport.dispatchMessage(
+            self, messageNum, payload)
+
+    def sendPacket(self, messageType, payload):
+        '''
+        Added extended logging.
+        '''
+        return transport.SSHServerTransport.sendPacket(
+            self, messageType, payload)
+# pylint: enable=R0904
+
+
+################################################################################
+# SSH Authentication Layer Classes
+#   * ProxySSHUserAuthServer
+#   * ProxySSHUserAuthClient
+#   * SSHCredentialsChecker
+#   * ReplaySSHCredentialsChecker
+#   * Realm
+################################################################################
+class ProxySSHUserAuthServer(userauth.SSHUserAuthServer):
+    '''
+    Implements server side of 'ssh-userauth'. Subclass is needed for
+    implementation of transparent authentication trough proxy,
+    concretely for sending disconnect messages.
+    '''
+    def __init__(self):
+        '''
+        Set password delay.
+        '''
+        self.passwordDelay = 0
+
+    def _ebBadAuth(self, reason):
+        '''
+        A little proxy authentication hack.
+        Send disconnect if real server send one.
+        Override this class because we don't have access to transport object
+        in Credentials checker object, so raised exception is caught here
+        and disconnect msg is sent.
+        '''
+        if reason.check(MITMException):
+            self.transport.sendDisconnect(
+                    transport.DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE,
+                    'too many bad auths')
+            return
+        userauth.SSHUserAuthServer._ebBadAuth(self, reason)
+
+
 class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
     '''
     Implements client side of 'ssh-userauth'.
@@ -1097,10 +1109,155 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
         return defer.succeed(keys.Key.fromFile(keypath).keyObject)
 
 
-# common to both SSH server and client
+class SSHCredentialsChecker(object):
+    '''
+    Implement publickey and password authentication method on proxy server
+    side.
+    '''
+    implements(checkers.ICredentialsChecker)
+    credentialInterfaces = (credentials.ISSHPrivateKey,
+                            credentials.IUsernamePassword,)
+
+    def __init__(self, my_factory):
+        self.my_factory = my_factory
+        self.receive = self.my_factory.clientq
+        self.transmit = self.my_factory.serverq
+        self.password = defer.DeferredQueue()
+        self.connected = False
+    # ignore 'invalid-method-name'
+    # pylint: disable=C0103
+    # ignore 'nonstandard-exception'
+    # pylint: disable=W0710
+    def requestAvatarId(self, creds):
+        '''
+        Set a callback for user auth success
+        '''
+        assert hasattr(creds, "username")
+        # set username for connect_to_server() method
+        self.username = creds.username
+        # set callback for evaluation of authentication result
+        deferred = self.receive.get().addCallback(self.is_auth_success)
+        # inform proxy client about authentication method
+        if hasattr(creds, 'password'):
+            # password for proxy client
+            self.password.put(creds.password)
+            self.transmit.put('password')
+        else:
+            self.transmit.put('publickey')
+        if not self.connected:
+            self.connect_to_server()
+            self.connected = True
+        return deferred
+
+    # pylint: enable=C0103
+
+    def is_auth_success(self, result):
+        '''
+        Check authentication result from proxy client and raise exception,
+        or return username for service.
+        '''
+        assert result in [-1, 0, 1]
+        if result == 1:
+            # Auth success
+            return self.username
+        elif result == 0:
+            # Authentication Failure, so initiate another authentication
+            # attempt with this exception.
+            raise failure.Failure(error.UnauthorizedLogin)
+        elif result == -1:
+            # Received disconnect from server.
+            raise failure.Failure(
+                    MITMException("No more authentication methods"))
+
+    # pylint: enable=W0710
+
+    def connect_to_server(self):
+        '''
+        Start mitm proxy client.
+        '''
+        # now connect to the real server and begin proxying...
+        client_factory = SSHClientFactory(SSHClientTransport,
+                                          (self.my_factory.serverq,
+                                          self.my_factory.clientq),
+                                          self.my_factory.log,
+                                          (self.username,
+                                          self.password,
+                                          self.my_factory.showpass),
+                                          (self.my_factory.cpub,
+                                          self.my_factory.cpriv))
+        reactor.connectTCP(self.my_factory.host, self.my_factory.port,
+                           client_factory)
+
+
+class ReplaySSHCredentialsChecker(object):
+    '''
+    Allow access on reply server with publickey or password authentication
+    method. This class do nothing useful, but it must be implemented because of
+    twisted authentication framework.
+    '''
+    # ignore 'too-few-public-methods'
+    # pylint: disable=R0903
+    implements(checkers.ICredentialsChecker)
+    credentialInterfaces = (credentials.ISSHPrivateKey,
+                            credentials.IUsernamePassword,)
+    def __init__(self):
+        '''
+        Nothing to do.
+        '''
+        pass
+
+    # pylint: disable=C0103,W0613,R0201
+    def requestAvatarId(self, creds):
+        '''
+        Return avatar id for any authentication method.
+        '''
+        return "ANONYMOUS"
+
+    # pylint: enable=C0103,R0903,R0201,W0613
+
+
+class Realm(object):
+    '''
+    The realm connects application-specific objects to the authentication
+    system.
+
+    Realm connects our service and authentication methods.
+    '''
+    # ignore 'too-few-public-methods'
+    # pylint: disable=R0903
+    implements(portal.IRealm)
+
+    def __init__(self, avatar=avatar.ConchUser()):
+        '''
+        Set the default avatar object.
+        '''
+        self.avatar = avatar
+
+    # ignore 'invalid-name', 'no-self-use'
+    # pylint: disable=C0103,R0201
+    def requestAvatar(self, avatarId, mind, *interfaces):
+        '''
+        Return object which provides one of the given interfaces of service.
+
+        Our object provides no service interface and even won't be used, but
+        this is needed for proper twisted ssh authentication mechanism.
+        '''
+        # ignore 'unused-argument' warning
+        # pylint: disable=W0613
+        return interfaces[0], self.avatar, lambda: None
+        # pylint: enable=W0613
+
+    # pylint: enable=C0103,R0201,R0903
+
+
+################################################################################
+# SSH Connection Layer Classes
+#   * ProxySSHConnection
+#   * ReplayAvatar
+#   * SSHReplayServerProtocol
+################################################################################
 # ignore 'too-many-public-methods'
 # pylint: disable=R0904
-
 class ProxySSHConnection(connection.SSHConnection):
     '''
     Overrides regular SSH connection protocol layer.
@@ -1156,142 +1313,6 @@ class ProxySSHConnection(connection.SSHConnection):
 # pylint: enable=R0904
 
 
-class SSHFactory(factory.SSHFactory):
-    '''
-    Base factory class for mitmproxy ssh servers. Create and set your
-    authentication checker or subclass.
-
-    @ivar spub: A path to server public key.
-    @type spub: C{str}
-    @ivar spriv: A path to server private key.
-    @type spriv: C{str}
-    '''
-    def __init__(self, opts):
-        '''
-        SSHFactory construcotr.
-
-        @param opts: Class with atributes opts.logfile, opts.serverpubkey,
-        opts.serverprivkey
-        '''
-        self.log = Logger()
-        if opts.logfile is not None:
-            self.log.open_log(opts.logfile)
-
-        self.spub = opts.serverpubkey
-        self.spriv = opts.serverprivkey
-        self.portal = portal.Portal(Realm())
-
-    def set_authentication_checker(self, checker):
-        '''
-        Set portal's credentials checker.
-        '''
-        self.portal.checkers = {}
-        self.portal.registerChecker(checker)
-
-    def getPublicKeys(self):
-        '''
-        Provide public keys for proxy server.
-        '''
-        keypath = self.spub
-        if not os.path.exists(keypath):
-            raise MITMException(
-                "Private/public keypair not generated in the keys directory.")
-
-        return {'ssh-rsa': keys.Key.fromFile(keypath)}
-
-    def getPrivateKeys(self):
-        '''
-        Provide private keys for proxy server.
-        '''
-        keypath = self.spriv
-        if not os.path.exists(keypath):
-            raise MITMException(
-                "Private/public keypair not generated in the keys directory.")
-        return {'ssh-rsa': keys.Key.fromFile(keypath)}
-
-
-class ReplaySSHCredentialsChecker(object):
-    '''
-    Allow access on reply server with publickey or password authentication
-    method. This class do nothing useful, but it must be implemented because of
-    twisted authentication framework.
-    '''
-    # ignore 'too-few-public-methods'
-    # pylint: disable=R0903
-    implements(checkers.ICredentialsChecker)
-    credentialInterfaces = (credentials.ISSHPrivateKey,
-                            credentials.IUsernamePassword,)
-    def __init__(self):
-        '''
-        Nothing to do.
-        '''
-        pass
-
-    # pylint: disable=C0103,W0613,R0201
-    def requestAvatarId(self, creds):
-        '''
-        Return avatar id for any authentication method.
-        '''
-        return "ANONYMOUS"
-
-    # pylint: enable=C0103,R0903,R0201,W0613
-
-
-class SSHReplayServerFactory(SSHFactory):
-    '''
-    Factory class for SSH replay server.
-    '''
-    def __init__(self, opts):
-        '''
-        Initialize base class and SSHReplayServerFactory.
-        '''
-        SSHFactory.__init__(self, opts)
-        self.protocol = ReplaySSHServerTransport
-
-        # create our service (Replay) protocol
-        (serverq, clientq, clientfirst) = logreader(opts.inputfile)
-        replay_factory = ReplayServerFactory(self.log, (serverq, clientq),
-                opts.delaymod, clientfirst)
-        replay_factory.protocol = SSHReplayServerProtocol
-        self.avatar = ReplayAvatar(replay_factory.protocol())
-        self.portal = portal.Portal(Realm(self.avatar))
-        self.portal.registerChecker(ReplaySSHCredentialsChecker())
-
-
-# pylint: disable=R0904
-class ReplaySSHServerTransport(transport.SSHServerTransport):
-    '''
-    Provides SSH replay server service.
-    '''
-    def __init__(self):
-        '''
-        Nothing to do. Parent class doesn't have constructor.
-        '''
-        pass
-
-    def connectionMade(self):
-        '''
-        Print info on stderr and call parent method after
-        establishing connection.
-        '''
-        return transport.SSHServerTransport.connectionMade(self)
-
-    def dispatchMessage(self, messageNum, payload):
-        '''
-        Added extended logging.
-        '''
-        return transport.SSHServerTransport.dispatchMessage(
-            self, messageNum, payload)
-
-    def sendPacket(self, messageType, payload):
-        '''
-        Added extended logging.
-        '''
-        return transport.SSHServerTransport.sendPacket(
-            self, messageType, payload)
-# pylint: enable=R0904
-
-
 class ReplayAvatar(avatar.ConchUser):
     '''
     SSH replay service spawning shell
@@ -1318,6 +1339,7 @@ class ReplayAvatar(avatar.ConchUser):
         Stop reactor after SSH session is closed.
         '''
         terminate()
+
 
 class SSHReplayServerProtocol(ReplayServer):
     '''
