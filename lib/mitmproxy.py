@@ -658,6 +658,12 @@ class SSHServerFactory(SSHFactory):
         self.origin = 'client'
         self.serverq = defer.DeferredQueue()
         self.clientq = defer.DeferredQueue()
+        # Aliases transmit and receive for the queues.
+        #   serverq - data for server
+        #   clientq - data for client
+        # Proxy server receive data from client and transmit to server.
+        self.receive = self.clientq
+        self.transmit = self.serverq
 
         # Set our credentials checker.
         self.set_authentication_checker(SSHCredentialsChecker(self))
@@ -707,6 +713,12 @@ class SSHClientFactory(protocol.ClientFactory):
         self.showpass = proxy_factory.showpass
         self.cpub = proxy_factory.cpub
         self.cpriv = proxy_factory.cpriv
+        # Aliases transmit and receive for the queues.
+        #   serverq - data for server
+        #   clientq - data for client
+        # Proxy client receive data from server and transmit to client.
+        self.receive = self.serverq
+        self.transmit = self.clientq
 
     def clientConnectionFailed(self, connector, reason):
         self.clientq.put(False)
@@ -728,37 +740,27 @@ class SSHServerTransport(transport.SSHServerTransport):
         '''
         Nothing to do.
         '''
-        pass
 
     def connectionMade(self):
         '''
         Calls parent method after establishing connection
         and sets some attributes.
         '''
-        self.origin = self.factory.origin
-        self.host = self.factory.host
-        self.port = self.factory.port
-        self.log = self.factory.log
-        # input - data from the real client
-        self.receive = self.factory.clientq
-        # output - data for the real server
-        self.transmit = self.factory.serverq
-
         transport.SSHServerTransport.connectionMade(self)
 
     def connectionLost(self, reason):
         '''
         Either end of the proxy received a disconnect.
         '''
-        if self.origin == 'server':
+        if self.factory.origin == 'server':
             sys.stderr.write('Disconnected from real server.\n')
         else:
             sys.stderr.write('Client disconnected.\n')
-        self.log.close_log()
+        self.factory.log.close_log()
         # destroy the receive queue
-        self.receive = None
+        self.factory.receive = None
         # put a special value into tx queue to indicate connecion loss
-        self.transmit.put(False)
+        self.factory.transmit.put(False)
         # stop the program
         terminate()
 
@@ -778,7 +780,7 @@ class SSHServerTransport(transport.SSHServerTransport):
 
         if messageType == 52:
             # SSH_MSG_USERAUTH_SUCCESS
-            self.receive.get().addCallback(self.proxy_data_received)
+            self.factory.receive.get().addCallback(self.proxy_data_received)
 
     def proxy_data_received(self, data):
         '''
@@ -789,10 +791,10 @@ class SSHServerTransport(transport.SSHServerTransport):
             # Special value indicating that one side of our proxy
             # no longer has an open connection. So we close the
             # other end.
-            self.receive = None
+            self.factory.receive = None
             self.transport.loseConnection()
             # the reactor should be stopping just about now
-        elif self.transmit is not None:
+        elif self.factory.transmit is not None:
             msgnum = ord(data[0])
             payload = data[1:]
             # Forward packet to it's intended destination
@@ -802,13 +804,13 @@ class SSHServerTransport(transport.SSHServerTransport):
             if msgnum == 1:
                 self.transport.loseConnection()
             else:
-                self.receive.get().addCallback(self.proxy_data_received)
+                self.factory.receive.get().addCallback(self.proxy_data_received)
         else:
             # got some data to be sent, but we no longer
             # have a connection to the other side
             sys.stderr.write(
                 'Unable to send queued data: not connected to %s.\n'
-                % (self.origin))
+                % (self.factory.origin))
             # the other proxy instance should already be calling
             # reactor.stop(), so we can just take a nap
 
@@ -831,16 +833,6 @@ class SSHClientTransport(transport.SSHClientTransport):
         Call parent method after enstablishing connection and make some
         initialization.
         '''
-        self.username = self.factory.username
-        self.password = self.factory.password
-        self.showpass = self.factory.showpass
-        self.origin = self.factory.origin
-        # input - data from the real server
-        self.receive = self.factory.serverq
-        # output - data for the real client
-        self.transmit = self.factory.clientq
-        self.log = self.factory.log
-
         transport.SSHClientTransport.connectionMade(self)
         sys.stderr.write('Connected to real server.\n')
 
@@ -850,24 +842,24 @@ class SSHClientTransport(transport.SSHClientTransport):
         from original server. This information depends on ssh layer.
         '''
         if self.auth_layer:
-            self.transmit.put(-1)
+            self.factory.transmit.put(-1)
         else:
-            self.transmit.put(packet)
+            self.factory.transmit.put(packet)
         transport.SSHClientTransport.ssh_DISCONNECT(self, packet)
 
     def connectionLost(self, reason):
         '''
         Either end of the proxy received a disconnect.
         '''
-        if self.origin == 'server':
+        if self.factory.origin == 'server':
             sys.stderr.write('Disconnected from real server.\n')
         else:
             sys.stderr.write('Client disconnected.\n')
-        self.log.close_log()
+        self.factory.log.close_log()
         # destroy the receive queue
-        self.receive = None
+        self.factory.receive = None
         # put a special value into tx queue to indicate connecion loss
-        self.transmit.put(False)
+        self.factory.transmit.put(False)
 
     def dispatchMessage(self, messageNum, payload):
         '''
@@ -898,7 +890,7 @@ class SSHClientTransport(transport.SSHClientTransport):
         '''
         self.requestService(
             ProxySSHUserAuthClient(
-                self.username, ProxySSHConnection()))
+                self.factory.username, ProxySSHConnection()))
 
     def proxy_data_received(self, data):
         '''
@@ -909,20 +901,20 @@ class SSHClientTransport(transport.SSHClientTransport):
             # Special value indicating that one side of our proxy
             # no longer has an open connection. So we close the
             # other end.
-            self.receive = None
+            self.factory.receive = None
             self.transport.loseConnection()
             # the reactor should be stopping just about now
-        elif self.transmit is not None:
+        elif self.factory.transmit is not None:
             # Transmit queue is defined => connection to
             # the other side is still open, we can send data to it.
             self.sendPacket(ord(data[0]), data[1:])
-            self.receive.get().addCallback(self.proxy_data_received)
+            self.factory.receive.get().addCallback(self.proxy_data_received)
         else:
             # got some data to be sent, but we no longer
             # have a connection to the other side
             sys.stderr.write(
                 'Unable to send queued data: not connected to %s.\n'
-                % (self.origin))
+                % (self.factory.origin))
             # the other proxy instance should already be calling
             # reactor.stop(), so we can just take a nap
 
@@ -1016,11 +1008,11 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
         authenticate with method according to original client.
         '''
         if self.lastAuth is not "none":
-            self.transport.transmit.put(0)
+            self.transport.factory.transmit.put(0)
         # Supported server methods.
         can_continue, _ = common.getNS(packet)
         # Get method name trought Deffered object.
-        deferred_method = self.transport.receive.get()
+        deferred_method = self.transport.factory.receive.get()
         deferred_method.addCallback(self.try_method, can_continue)
         return deferred_method
 
@@ -1045,10 +1037,10 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
         Add new callback for processing data from proxy server, inform proxy
         server about authentication method success and call parent method.
         '''
-        self.transport.receive.get().addCallback(
+        self.transport.factory.receive.get().addCallback(
                 self.transport.proxy_data_received)
         self.transport.auth_layer = False
-        self.transport.transmit.put(1)
+        self.transport.factory.transmit.put(1)
         userauth.SSHUserAuthClient.ssh_USERAUTH_SUCCESS(self, packet)
 
 
@@ -1056,7 +1048,7 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
         '''
         Show password on proxy output if option was true.
         '''
-        if self.transport.showpass:
+        if self.transport.factory.showpass:
             sys.stderr.write("SSH 'password' is: '%s'" % password)
 
         return password
@@ -1067,7 +1059,7 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
         Return deffered with password from ssh proxy server and add callback
         for showing password.
         '''
-        tmp_deferred = self.transport.password.get()
+        tmp_deferred = self.transport.factory.password.get()
         tmp_deferred.addCallback(self.show_password)
         return tmp_deferred
 
@@ -1103,8 +1095,6 @@ class SSHCredentialsChecker(object):
 
     def __init__(self, proxy_factory):
         self.proxy_factory = proxy_factory
-        self.receive = self.proxy_factory.clientq
-        self.transmit = self.proxy_factory.serverq
         self.password = defer.DeferredQueue()
         self.connected = False
     # ignore 'invalid-method-name'
@@ -1119,14 +1109,15 @@ class SSHCredentialsChecker(object):
         # set username for connect_to_server() method
         self.username = creds.username
         # set callback for evaluation of authentication result
-        deferred = self.receive.get().addCallback(self.is_auth_success)
+        deferred = self.proxy_factory.receive.get().addCallback(
+                self.is_auth_success)
         # inform proxy client about authentication method
         if hasattr(creds, 'password'):
             # password for proxy client
             self.password.put(creds.password)
-            self.transmit.put('password')
+            self.proxy_factory.transmit.put('password')
         else:
-            self.transmit.put('publickey')
+            self.proxy_factory.transmit.put('publickey')
         if not self.connected:
             self.connect_to_server()
             self.connected = True
@@ -1248,7 +1239,7 @@ class ProxySSHConnection(connection.SSHConnection):
         Log data and send received packet to the proxy server side.
         '''
         self.log_channel_communication(chr(messageNum) + packet)
-        self.transport.transmit.put(chr(messageNum) + packet)
+        self.transport.factory.transmit.put(chr(messageNum) + packet)
 
     def log_channel_communication(self, payload):
         '''
@@ -1286,7 +1277,8 @@ class ProxySSHConnection(connection.SSHConnection):
             #    % (msg.encode('hex'), channel.encode('hex'),
             #    datalen.encode('hex'), data.encode('hex')))
 
-            self.transport.log.log(self.transport.origin, data.encode('hex'))
+            self.transport.factory.log.log(self.transport.factory.origin,
+                    data.encode('hex'))
 
 # pylint: enable=R0904
 
