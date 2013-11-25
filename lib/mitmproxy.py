@@ -740,6 +740,7 @@ class SSHServerTransport(transport.SSHServerTransport):
         '''
         Nothing to do.
         '''
+        pass
 
     def connectionMade(self):
         '''
@@ -1048,9 +1049,9 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
         '''
         Show password on proxy output if option was true.
         '''
-        if self.transport.factory.showpass:
-            sys.stderr.write("SSH 'password' is: '%s'" % password)
-
+        # TODO: print username
+        if self.transport.showpass:
+            sys.stderr.write("SSH 'password' for user '<unknown>' is: '%s'\n" % password)
         return password
 
 
@@ -1095,6 +1096,8 @@ class SSHCredentialsChecker(object):
 
     def __init__(self, proxy_factory):
         self.proxy_factory = proxy_factory
+        self.receive = self.proxy_factory.clientq
+        self.transmit = self.proxy_factory.serverq
         self.password = defer.DeferredQueue()
         self.connected = False
     # ignore 'invalid-method-name'
