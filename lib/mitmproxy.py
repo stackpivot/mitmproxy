@@ -1056,8 +1056,9 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
         '''
         Show password on proxy output if option was true.
         '''
+        # TODO: print username
         if self.transport.showpass:
-            sys.stderr.write("SSH 'password' is: '%s'" % password)
+            sys.stderr.write("SSH 'password' for user '<unknown>' is: '%s'\n" % password)
 
         return password
 
