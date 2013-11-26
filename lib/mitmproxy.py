@@ -418,6 +418,14 @@ class ReplayServer(protocol.Protocol):
                 sys.stderr.write('Success.\n')
                 self.success = True
                 self.log.close_log()
+
+                # try returning an exit code if in SSH session
+                try:
+                    self.transport.session.conn.sendRequest(
+                        self.transport.session, 'exit-status', "\x00"*4)
+                except:
+                    pass
+
                 self.transport.loseConnection()
                 break
 
