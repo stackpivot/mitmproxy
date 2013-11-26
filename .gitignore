@@ -6,3 +6,4 @@ ssl/keys/*.csr
 ssl/keys/*.key
 ssl/keys/*.key.org
 ssh/keys/id_*
+logs
