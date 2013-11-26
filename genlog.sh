@@ -16,7 +16,7 @@ else
 fi
 
 # check protocol validity
-if [ ! -d "${proto}" ] ; then
+if [ ! -d "logs/${proto}" ] ; then
   echo "No such protocol: ${proto}"
   exit 1
 fi
