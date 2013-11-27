@@ -9,6 +9,7 @@ import sys
 
 sys.path.append('../lib')
 import mitmproxy
+import logging
 
 def main():
     '''
@@ -16,9 +17,11 @@ def main():
     '''
     (opts, _) = mitmproxy.ssh_proxy_option_parser(22, 2222)
 
-    log = mitmproxy.Logger()
-    if opts.logfile is not None:
-        log.open_log(opts.logfile)
+    if opts.debug:
+        logging.basicConfig(filename='ssh.log',
+                    filemode='w',
+                    format='%(levelname)s:%(message)s',
+                    level=logging.DEBUG)
 
     sys.stderr.write(
         'Server running on localhost:%d...\n' % (opts.localport))

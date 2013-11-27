@@ -9,6 +9,7 @@ import sys
 
 sys.path.append('../lib')
 import mitmproxy
+import logging
 
 
 def main():
@@ -16,6 +17,12 @@ def main():
     parse options, open and read log file, start replay server
     '''
     (opts, _) = mitmproxy.ssh_replay_option_parser(2222)
+
+    if opts.debug:
+        logging.basicConfig(filename='ssh.log',
+                    filemode='w',
+                    format='%(levelname)s:%(message)s',
+                    level=logging.DEBUG)
 
     if opts.inputfile is None:
         sys.stderr.write('Need to specify an input file.\n')

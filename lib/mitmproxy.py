@@ -20,6 +20,7 @@ import sys
 import string
 import re
 import os
+import sshdebug
 
 # "undefined" class members, attributes "defined" outside init
 # pylint: disable=E1101, W0201
@@ -106,6 +107,10 @@ def ssh_proxy_option_parser(port, localport):
         '-s', '--show-password', dest='showpassword', action='store_true',
         default=False,
         help='Show SSH password on the screen (default: %default)')
+    parser.add_option(
+        '-D', '--debug', dest='debug', action='store_true',
+        default=False,
+        help='Enable SSH message logger with output into ssh.debug')
     opts, args = parser.parse_args()
     return (opts, args)
 
@@ -164,6 +169,14 @@ def ssh_replay_option_parser(localport):
         '-B', '--server-privkey', dest='serverprivkey', type='string',
         metavar='FILE', default='keys/id_rsa',
         help='Use FILE as the server privkey (default: %default)')
+    parser.add_option(
+        '-s', '--show-password', dest='showpassword', action='store_true',
+        default=False,
+        help='Show SSH password on the screen (default: %default)')
+    parser.add_option(
+        '-D', '--debug', dest='debug', action='store_true',
+        default=False,
+        help='Enable SSH message logger with output into ssh.debug')
     opts, args = parser.parse_args()
     return (opts, args)
 
@@ -607,6 +620,7 @@ class SSHFactory(factory.SSHFactory):
             self.log.open_log(opts.logfile)
         self.spub = opts.serverpubkey
         self.spriv = opts.serverprivkey
+        self.sshdebug = sshdebug.SSHDebug(opts.showpassword)
 
     def set_authentication_checker(self, checker):
         '''
@@ -689,6 +703,7 @@ class ReplaySSHServerFactory(SSHFactory):
         checker.
         '''
         SSHFactory.__init__(self, opts)
+        self.origin = 'client'
         self.protocol = ReplaySSHServerTransport
 
         # Create our service ReplayAvatar for portal.
@@ -727,6 +742,7 @@ class SSHClientFactory(protocol.ClientFactory):
         # Proxy client receive data from server and transmit to client.
         self.receive = self.serverq
         self.transmit = self.clientq
+        self.sshdebug = proxy_factory.sshdebug
 
     def clientConnectionFailed(self, connector, reason):
         self.clientq.put(False)
@@ -778,6 +794,8 @@ class SSHServerTransport(transport.SSHServerTransport):
         In parent method packets are distinguished and dispatched to message
         processing methods. Added extended logging.
         '''
+        self.factory.sshdebug.log_packet(self.factory.origin, 'in', messageNum,
+                payload)
         transport.SSHServerTransport.dispatchMessage(self, messageNum, payload)
 
     def sendPacket(self, messageType, payload):
@@ -785,6 +803,8 @@ class SSHServerTransport(transport.SSHServerTransport):
         Extending internal logging and set message dispatching between proxy
         components if client successfully authenticated.
         '''
+        self.factory.sshdebug.log_packet(self.factory.origin, 'out',
+                messageType, payload)
         transport.SSHServerTransport.sendPacket(self, messageType, payload)
 
         if messageType == 52:
@@ -874,12 +894,16 @@ class SSHClientTransport(transport.SSHClientTransport):
         '''
         Add internal logging of incoming packets.
         '''
+        self.factory.sshdebug.log_packet(self.factory.origin, 'in', messageNum,
+                payload)
         transport.SSHClientTransport.dispatchMessage(self, messageNum, payload)
 
     def sendPacket(self, messageType, payload):
         '''
         Add internal logging of outgoing packets.
         '''
+        self.factory.sshdebug.log_packet(self.factory.origin, 'out',
+                messageType, payload)
         transport.SSHClientTransport.sendPacket(self, messageType, payload)
 
     def verifyHostKey(self, pubKey, fingerprint):
@@ -952,15 +976,17 @@ class ReplaySSHServerTransport(transport.SSHServerTransport):
         '''
         Added extended logging.
         '''
-        return transport.SSHServerTransport.dispatchMessage(
-            self, messageNum, payload)
+        self.factory.sshdebug.log_packet(self.factory.origin, 'in', messageNum,
+                payload)
+        transport.SSHServerTransport.dispatchMessage(self, messageNum, payload)
 
     def sendPacket(self, messageType, payload):
         '''
         Added extended logging.
         '''
-        return transport.SSHServerTransport.sendPacket(
-            self, messageType, payload)
+        self.factory.sshdebug.log_packet(self.factory.origin, 'out',
+                messageType, payload)
+        transport.SSHServerTransport.sendPacket(self, messageType, payload)
 # pylint: enable=R0904
 
 
