@@ -35,7 +35,7 @@ newlog="logs/${proto}/${devname}/${fwver}/${oper}/${nextindex}.log"
 echo "Saving log to ${newlog}"
 
 cd "${proto}"
-./"${proto}"_proxy.py "${args}" -o "../${newlog}"
+./"${proto}"_proxy.py ${args} -o "../${newlog}"
 cd ..
 
 echo "Done."

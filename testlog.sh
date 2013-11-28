@@ -66,7 +66,7 @@ cd "${proto}"
 for v in ${fw_can_test} ; do
   for i in $(ls ../logs/${proto}/${devname}/${v}/${oper}/) ; do
     echo "Testing ../logs/${proto}/${devname}/${v}/${oper}/${i}"
-    ./"${proto}"_replay.py "${args}" -f "../logs/${proto}/${devname}/${v}/${oper}/${i}" &
+    ./"${proto}"_replay.py ${args} -f "../logs/${proto}/${devname}/${v}/${oper}/${i}" &
     pid=$!
     sleep 1
     eval "${cmd}"
