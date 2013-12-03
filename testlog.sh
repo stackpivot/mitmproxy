@@ -1,4 +1,5 @@
 #!/usr/bin/bash
+sleep=1
 
 # params either read from stdin or as positional args
 if [ -z "$1" ] ; then
@@ -63,17 +64,31 @@ fi
 successful_tests=0
 failed_tests=0
 cd "${proto}"
-for v in ${fw_can_test} ; do
-  for i in $(ls ../logs/${proto}/${devname}/${v}/${oper}/) ; do
+for v in ${fw_can_test} ; do # for all firmware versions
+  for i in $(ls ../logs/${proto}/${devname}/${v}/${oper}/) ; do # loop over all operation logs for each fw ver
     echo "Testing ../logs/${proto}/${devname}/${v}/${oper}/${i}"
+
+    # lanuch replay server in background
     ./"${proto}"_replay.py ${args} -f "../logs/${proto}/${devname}/${v}/${oper}/${i}" &
+    # and save its PID
     pid=$!
-    sleep 1
-    eval "${cmd}"
+    # give server some time to start listening
+    sleep ${sleep}
+
+    # start fence agent
+    echo "Launching ${cmd}"
+    eval ${cmd}
     result=$?
+    # fence agent finished
+
+    # wait for replay server to terminate
     wait $pid
     #kill $pid 2>&1 >/dev/null || true
+
+    # check result of fence agent
     echo "Exit code: $result"
+
+    # count successful and failed test
     if [ $result -eq 0 ] ; then
       ((successful_tests++))
       st="${st} logs/${proto}/${devname}/${v}/${oper}/${i}"
@@ -81,16 +96,23 @@ for v in ${fw_can_test} ; do
       ((failed_tests++))
       ft="${ft} logs/${proto}/${devname}/${v}/${oper}/${i}"
     fi
+
+    # some whitespace between test runs
     echo
     echo
   done
 done
 cd ..
 
+# print summary
 echo
 echo "====="
 echo "Summary: ${successful_tests} tests succeeded, ${failed_tests} failed"
-echo "List of failed tests:"
-for t in ${ft} ; do
-  echo "  $t"
-done
+
+# list all failed tests
+if [ ${failed_tests} -gt 0 ] ; then
+  echo "List of failed tests:"
+  for t in ${ft} ; do
+    echo "  $t"
+  done
+fi
