@@ -431,14 +431,6 @@ class ReplayServer(protocol.Protocol):
                 sys.stderr.write('Success.\n')
                 self.success = True
                 self.log.close_log()
-
-                # try returning an exit code if in SSH session
-                try:
-                    self.transport.session.conn.sendRequest(
-                        self.transport.session, 'exit-status', "\x00"*4)
-                except:
-                    pass
-
                 self.transport.loseConnection()
                 break
 
@@ -1321,6 +1313,23 @@ class ProxySSHConnection(connection.SSHConnection):
 # pylint: enable=R0904
 
 
+class ReplayAvatarSession(session.SSHSession):
+    '''
+    This fix some problems with client exit codes. Some of them request exit
+    status after closing the session.
+    '''
+    def __init__(self, *args, **kw):
+        session.SSHSession.__init__(self, *args, **kw)
+
+    def loseConnection(self):
+        '''
+        Send ssh message with exit-status for ssh client after before session
+        is closed. Also send SSH_MSG_CHANNEL_EOF before SSH_MSG_CHANNEL_CLOSE.
+        '''
+        self.conn.sendRequest(self, 'exit-status', "\x00"*4)
+        session.SSHSession.loseConnection(self)
+
+
 class ReplayAvatar(avatar.ConchUser):
     '''
     SSH replay service spawning shell
@@ -1329,7 +1338,7 @@ class ReplayAvatar(avatar.ConchUser):
 
     def __init__(self, service_protocol):
         avatar.ConchUser.__init__(self)
-        self.channelLookup.update({'session':session.SSHSession})
+        self.channelLookup.update({'session':ReplayAvatarSession})
         self.service_protocol = service_protocol
     def openShell(self, protocol):
         self.service_protocol.makeConnection(protocol)
