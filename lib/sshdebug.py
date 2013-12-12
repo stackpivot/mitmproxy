@@ -144,11 +144,13 @@ class SSHDebug(object):
         uints, payload = get_uint32(payload)
         result = "REASON_CODE (uint32):\n    %s (%s)\n" % (uints[0],
             decode_code(uints[0]))
-        strings, payload = get_net_string(payload, 2)
+        strings, payload = get_net_string(payload, 1)
         result += "DESCRIPTION (string %s):\n" % len(strings[0])
         result += self.indent_break(strings[0])
-        result += "LANGUAGE_TAG (string %s):\n" % len(strings[1])
-        result += self.indent_break(strings[1])
+        # some ssh implementations don't send this part of packet
+        # don't use next 2 lines
+        #result += "LANGUAGE_TAG (string %s):\n" % len(strings[1])
+        #result += self.indent_break(strings[1])
         return result
 
     def msg_ignore(self, payload):
