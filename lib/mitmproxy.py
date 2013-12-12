@@ -1056,7 +1056,17 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
             can_continue = []
         else:
             can_continue = [method]
-        return self._cbUserauthFailure(None, iter(can_continue))
+
+        # fix for python-twisted version 8.2.0 (RHEL 6.x)
+        try:
+            return self._cbUserauthFailure(None, iter(can_continue))
+        except AttributeError:
+            # old twisted 8.2.0
+            if self.tryAuth(method):
+                return
+            self.transport.sendDisconnect(
+                    transport.DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE,
+                    'no more authentication methods available')
 
 
     def ssh_USERAUTH_SUCCESS(self, packet):
