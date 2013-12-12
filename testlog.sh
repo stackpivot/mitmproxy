@@ -123,4 +123,5 @@ if [ ${failed_tests} -gt 0 ] ; then
   for t in ${ft} ; do
     echo "  $t"
   done
+  exit 1 # indicate failure
 fi
