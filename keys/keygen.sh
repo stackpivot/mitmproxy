@@ -1,6 +1,10 @@
 #!/usr/bin/bash
-# SSL Server Keygen
 
+### SSH
+ssh-keygen -f ./id_rsa
+
+
+### SSL
 # Generate the Private Key
 openssl genrsa -des3 -out server.key 1024
 

@@ -1,5 +1,7 @@
 #!/usr/bin/bash
 
+home=$(dirname $0)
+
 # params either read from stdin or as positional args
 if [ -z "$1" ] ; then
   read -p "Protocol [http/ssh/ssl/telnet]: " proto
@@ -15,27 +17,19 @@ else
   args="$5"
 fi
 
-# check protocol validity
-if [ ! -d "${proto}" ] ; then
-  echo "No such protocol: ${proto}"
-  exit 1
-fi
-
 # make dir structure if it does not exist
-mkdir -p "logs/${proto}/${devname}/${fwver}/${oper}/"
+mkdir -p "${home}/logs/${proto}/${devname}/${fwver}/${oper}/"
 
 # calculate next log index/filename (for multiple samples of same protocol/device/fw/operation)
 # will default to 1 of no logs exist yet
-files=$(ls "logs/${proto}/${devname}/${fwver}/${oper}/" | grep '[[:digit:]]*\.log' | sed 's/\.log//')
+files=$(ls "${home}/logs/${proto}/${devname}/${fwver}/${oper}/" | grep '[[:digit:]]*\.log' | sed 's/\.log//')
 lastindex=$(echo "$files" | tac | head -n 1)
 nextindex=$((lastindex+1))
-newlog="logs/${proto}/${devname}/${fwver}/${oper}/${nextindex}.log"
+newlog="${home}/logs/${proto}/${devname}/${fwver}/${oper}/${nextindex}.log"
 
 # print the log name
 echo "Saving log to ${newlog}"
 
-cd "${proto}"
-./"${proto}"_proxy.py ${args} -o "../${newlog}"
-cd ..
+${home}/"${proto}"_proxy.py ${args} -o "${newlog}"
 
 echo "Done."

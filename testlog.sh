@@ -1,4 +1,6 @@
 #!/usr/bin/bash
+
+home=$(dirname $0)
 sleep=1
 
 # clean up on exit
@@ -26,21 +28,15 @@ else
   args="$6"
 fi
 
-# check protocol validity
-if [ ! -d "logs/${proto}" ] ; then
-  echo "No such protocol: ${proto}"
-  exit 1
-fi
-
 # check device validity
-if [ ! -d "logs/${proto}/${devname}" ] ; then
+if [ ! -d "${home}/logs/${proto}/${devname}" ] ; then
   echo "No such device: ${devname}"
   exit 1
 fi
 
 # check fw validity
 if [ ! "${fwver}" = "*" ] ; then
-  if [ ! -d "logs/${proto}/${devname}/${fwver}"] ; then
+  if [ ! -d "${home}/logs/${proto}/${devname}/${fwver}"] ; then
     echo "No such firmware: ${fwver}"
     exit 1
   fi
@@ -48,9 +44,9 @@ fi
 
 # get list of firmwares if fwver == '*' and return those that have logs for given operation
 if [ "${fwver}" = '*' ] ; then
-  fwlist=$(ls "logs/${proto}/${devname}/")
+  fwlist=$(ls "${home}/logs/${proto}/${devname}/")
   for v in ${fwlist} ; do
-    if [ -d "logs/${proto}/${devname}/${v}/${oper}" ] ; then
+    if [ -d "${home}/logs/${proto}/${devname}/${v}/${oper}" ] ; then
       fw_can_test="${fw_can_test} ${v}"
     fi
   done
@@ -60,7 +56,7 @@ if [ "${fwver}" = '*' ] ; then
   fi
 else
   # check operation validity
-  if [ ! -d "logs/${proto}/${devname}/${fwver}/${oper}" ] ; then
+  if [ ! -d "${home}/logs/${proto}/${devname}/${fwver}/${oper}" ] ; then
     echo "No such operation: ${oper}"
     exit 1
   fi
@@ -73,11 +69,11 @@ successful_tests=0
 failed_tests=0
 cd "${proto}"
 for v in ${fw_can_test} ; do # for all firmware versions
-  for i in $(ls ../logs/${proto}/${devname}/${v}/${oper}/) ; do # loop over all operation logs for each fw ver
-    echo "Testing ../logs/${proto}/${devname}/${v}/${oper}/${i}"
+  for i in $(ls ${home}/logs/${proto}/${devname}/${v}/${oper}/) ; do # loop over all operation logs for each fw ver
+    echo "Testing ${home}/logs/${proto}/${devname}/${v}/${oper}/${i}"
 
     # lanuch replay server in background
-    ./"${proto}"_replay.py ${args} -f "../logs/${proto}/${devname}/${v}/${oper}/${i}" &
+    ${home}/${proto}_replay.py ${args} -f "${home}/logs/${proto}/${devname}/${v}/${oper}/${i}" &
     # and save its PID
     pid=$!
     # give server some time to start listening
@@ -99,10 +95,10 @@ for v in ${fw_can_test} ; do # for all firmware versions
     # count successful and failed test
     if [ $result -eq 0 ] ; then
       ((successful_tests++))
-      st="${st} logs/${proto}/${devname}/${v}/${oper}/${i}"
+      st="${st} ${home}/logs/${proto}/${devname}/${v}/${oper}/${i}"
     else
       ((failed_tests++))
-      ft="${ft} logs/${proto}/${devname}/${v}/${oper}/${i}"
+      ft="${ft} ${home}/logs/${proto}/${devname}/${v}/${oper}/${i}"
     fi
 
     # some whitespace between test runs

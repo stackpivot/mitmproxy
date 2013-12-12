@@ -8,8 +8,6 @@ from twisted.internet import reactor, ssl
 import Queue
 import sys
 import os
-
-sys.path.append('../lib')
 import mitmproxy
 
 

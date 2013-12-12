@@ -5,8 +5,6 @@ See --help for usage.
 '''
 
 import sys
-
-sys.path.append('./lib')
 import mitmproxy
 
 

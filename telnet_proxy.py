@@ -6,8 +6,6 @@ See --help for usage.
 
 from twisted.internet import reactor
 import sys
-
-sys.path.append('../lib')
 import mitmproxy
 
 # disable reporting of bogus "no-member" errors

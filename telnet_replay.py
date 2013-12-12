@@ -1,22 +1,20 @@
 #!/usr/bin/env python2
 '''
-Replay server for HTTP.
-See --help for usage, README.md for solutions to common problems.
+Replay server for telnet (or any other protocol running over port 23).
+See --help for usage.
 '''
 
 from twisted.internet import reactor
 import Queue
 import sys
-
-sys.path.append('../lib')
 import mitmproxy
 
 
 def main():
     '''
-    Parser options, open and read log file, start replay server
+    Parse options, open and read log file, start replay server
     '''
-    (opts, _) = mitmproxy.replay_option_parser(8080)
+    (opts, _) = mitmproxy.replay_option_parser(2323)
 
     if opts.inputfile is None:
         print "Need to specify an input file."
