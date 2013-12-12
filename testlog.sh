@@ -1,6 +1,14 @@
 #!/usr/bin/bash
 sleep=1
 
+# clean up on exit
+function on_exit {
+  [ ! -z $pid ] && kill -9 $pid
+}
+
+# trap signals and clean up
+trap on_exit 1 2 15
+
 # params either read from stdin or as positional args
 if [ -z "$1" ] ; then
   read -p "Protocol [http/ssh/ssl/telnet]: " proto
