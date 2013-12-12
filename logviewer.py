@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python2
 '''
 View a log file with an optional time dilation.
 See --help for usage.

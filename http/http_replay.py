@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python2
 '''
 Replay server for HTTP.
 See --help for usage, README.md for solutions to common problems.

@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python2
 '''
 Replay server for telnet (or any other protocol running over port 23).
 See --help for usage.

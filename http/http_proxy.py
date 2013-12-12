@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python2
 '''
 HTTP interceptor and logger.
 See --help for usage, README.md for solutions to common problems.

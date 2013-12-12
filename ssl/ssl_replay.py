@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python2
 '''
 Replay server for SSL-encrytped raw TCP connections running over port 443.
 See --help for usage.

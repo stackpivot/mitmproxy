@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python2
 '''
 Telnet (or any other protocol running over port 23) interceptor and logger.
 See --help for usage.
