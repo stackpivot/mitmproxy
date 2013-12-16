@@ -4,11 +4,7 @@ SSL INTERCEPTOR
 NOTES
 -----
 
-* Generate server certificate/keys (password can be anything, will be stripped from the cert)
-
-```
-cd keys && ./keygen.sh && cd -
-```
+* See step 1 in SSH readme to generate server keys if you don't have them already
 
 * see README.md for HTTP interceptor as it applies also to SSL
 

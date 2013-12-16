@@ -12,22 +12,22 @@ SUPPORTED AUTH METHODS
 USAGE
 -----
 
-1. Generate fake client/server keypairs
+1. Generate fake client/server keypairs if you don't have them already (empty password for ssh key; ssl cert password doesn't matter, will be stripped)
 
     ```
-    cd keys && sh keys/keygen.sh && cd ..
+    mkdir ~/.mitmkeys && cp keys/keygen.sh ~/.mitmkeys/ && cd ~/.mitmkeys && ./keygen.sh
     ```
 
 2. Copy the newly generated public key to server (Z0MG L33T H4X!!!1)
 
     ```
-    ssh-copy-id -i keys/id_rsa user@host
+    ssh-copy-id -i ~/.mitmkeys/id_rsa user@host
     ```
 
 4. Start proxy server, eg. to intercept traffic for `host`
 
     ```
-    ./ssh_proxy.py -H host
+    proxy_ssh.py -H host
     ```
 
 5. Connect through the proxy
