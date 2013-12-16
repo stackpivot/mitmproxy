@@ -1,7 +1,5 @@
 #!/usr/bin/bash
 
-home=$(dirname $0)
-
 # params either read from stdin or as positional args
 if [ -z "$1" ] ; then
   read -p "Protocol [http/ssh/ssl/telnet]: " proto
@@ -18,18 +16,18 @@ else
 fi
 
 # make dir structure if it does not exist
-mkdir -p "${home}/logs/${proto}/${devname}/${fwver}/${oper}/"
+mkdir -p "~/.mitmlogs/${proto}/${devname}/${fwver}/${oper}/"
 
 # calculate next log index/filename (for multiple samples of same protocol/device/fw/operation)
 # will default to 1 of no logs exist yet
-files=$(ls "${home}/logs/${proto}/${devname}/${fwver}/${oper}/" | grep '[[:digit:]]*\.log' | sed 's/\.log//')
+files=$(ls "~/.mitmlogs/${proto}/${devname}/${fwver}/${oper}/" | grep '[[:digit:]]*\.log' | sed 's/\.log//')
 lastindex=$(echo "$files" | tac | head -n 1)
 nextindex=$((lastindex+1))
-newlog="${home}/logs/${proto}/${devname}/${fwver}/${oper}/${nextindex}.log"
+newlog="~/.mitmlogs/${proto}/${devname}/${fwver}/${oper}/${nextindex}.log"
 
 # print the log name
 echo "Saving log to ${newlog}"
 
-${home}/"${proto}"_proxy.py ${args} -o "${newlog}"
+mitmproxy_"${proto}" ${args} -o "${newlog}"
 
 echo "Done."

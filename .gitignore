@@ -1,9 +1,4 @@
 **.swp
 **.pyc
 **.log
-keys/*.crt
-keys/*.csr
-keys/*.key
-keys/*.key.org
-keys/id_*
 logs

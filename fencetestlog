@@ -1,8 +1,5 @@
 #!/usr/bin/bash
 
-home=$(dirname $0)
-sleep=1
-
 # clean up on exit
 function on_exit {
   [ ! -z $pid ] && kill -9 $pid
@@ -29,14 +26,14 @@ else
 fi
 
 # check device validity
-if [ ! -d "${home}/logs/${proto}/${devname}" ] ; then
+if [ ! -d "~/.mitmlogs/${proto}/${devname}" ] ; then
   echo "No such device: ${devname}"
   exit 1
 fi
 
 # check fw validity
 if [ ! "${fwver}" = "*" ] ; then
-  if [ ! -d "${home}/logs/${proto}/${devname}/${fwver}"] ; then
+  if [ ! -d "~/.mitmlogs/${proto}/${devname}/${fwver}"] ; then
     echo "No such firmware: ${fwver}"
     exit 1
   fi
@@ -44,9 +41,9 @@ fi
 
 # get list of firmwares if fwver == '*' and return those that have logs for given operation
 if [ "${fwver}" = '*' ] ; then
-  fwlist=$(ls "${home}/logs/${proto}/${devname}/")
+  fwlist=$(ls "~/.mitmlogs/${proto}/${devname}/")
   for v in ${fwlist} ; do
-    if [ -d "${home}/logs/${proto}/${devname}/${v}/${oper}" ] ; then
+    if [ -d "~/.mitmlogs/${proto}/${devname}/${v}/${oper}" ] ; then
       fw_can_test="${fw_can_test} ${v}"
     fi
   done
@@ -56,7 +53,7 @@ if [ "${fwver}" = '*' ] ; then
   fi
 else
   # check operation validity
-  if [ ! -d "${home}/logs/${proto}/${devname}/${fwver}/${oper}" ] ; then
+  if [ ! -d "~/.mitmlogs/${proto}/${devname}/${fwver}/${oper}" ] ; then
     echo "No such operation: ${oper}"
     exit 1
   fi
@@ -67,17 +64,16 @@ fi
 # test all that can be tested
 successful_tests=0
 failed_tests=0
-cd "${proto}"
 for v in ${fw_can_test} ; do # for all firmware versions
-  for i in $(ls ${home}/logs/${proto}/${devname}/${v}/${oper}/) ; do # loop over all operation logs for each fw ver
-    echo "Testing ${home}/logs/${proto}/${devname}/${v}/${oper}/${i}"
+  for i in $(ls ~/.mitmlogs/${proto}/${devname}/${v}/${oper}/) ; do # loop over all operation logs for each fw ver
+    echo "Testing ~/.mitmlogs/${proto}/${devname}/${v}/${oper}/${i}"
 
     # lanuch replay server in background
-    ${home}/${proto}_replay.py ${args} -f "${home}/logs/${proto}/${devname}/${v}/${oper}/${i}" &
+    mitmreplay_${proto} ${args} -f "~/.mitmlogs/${proto}/${devname}/${v}/${oper}/${i}" &
     # and save its PID
     pid=$!
     # give server some time to start listening
-    sleep ${sleep}
+    sleep 1
 
     # start fence agent
     echo "Launching ${cmd}"
@@ -87,7 +83,6 @@ for v in ${fw_can_test} ; do # for all firmware versions
 
     # wait for replay server to terminate
     wait $pid
-    #kill $pid 2>&1 >/dev/null || true
 
     # check result of fence agent
     echo "Exit code: $result"
@@ -95,10 +90,10 @@ for v in ${fw_can_test} ; do # for all firmware versions
     # count successful and failed test
     if [ $result -eq 0 ] ; then
       ((successful_tests++))
-      st="${st} ${home}/logs/${proto}/${devname}/${v}/${oper}/${i}"
+      st="${st} ~/.mitmlogs/${proto}/${devname}/${v}/${oper}/${i}"
     else
       ((failed_tests++))
-      ft="${ft} ${home}/logs/${proto}/${devname}/${v}/${oper}/${i}"
+      ft="${ft} ~/.mitmlogs/${proto}/${devname}/${v}/${oper}/${i}"
     fi
 
     # some whitespace between test runs
@@ -106,7 +101,6 @@ for v in ${fw_can_test} ; do # for all firmware versions
     echo
   done
 done
-cd ..
 
 # print summary
 echo
