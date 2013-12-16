@@ -1,9 +1,9 @@
 **.swp
 **.pyc
 **.log
-ssl/keys/*.crt
-ssl/keys/*.csr
-ssl/keys/*.key
-ssl/keys/*.key.org
-ssh/keys/id_*
+keys/*.crt
+keys/*.csr
+keys/*.key
+keys/*.key.org
+keys/id_*
 logs
