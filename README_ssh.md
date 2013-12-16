@@ -15,7 +15,7 @@ USAGE
 1. Generate fake client/server keypairs if you don't have them already (empty password for ssh key; ssl cert password doesn't matter, will be stripped)
 
     ```
-    mkdir ~/.mitmkeys && cp keys/keygen.sh ~/.mitmkeys/ && cd ~/.mitmkeys && ./keygen.sh
+    $ mitmkeygen
     ```
 
 2. Copy the newly generated public key to server (Z0MG L33T H4X!!!1)
@@ -27,7 +27,7 @@ USAGE
 4. Start proxy server, eg. to intercept traffic for `host`
 
     ```
-    proxy_ssh.py -H host
+    mitmproxy_ssh -H host
     ```
 
 5. Connect through the proxy

@@ -9,7 +9,7 @@ NOTES
 * best to run it as
 
   ```
-  while true; do proxy_http.py [options]; done
+  while true; do mitmproxy_http [options]; done
   ```
 
   * that's because the proxy terminates after each connection close, which might be OK for some limited amount of tools, but completely unusable with full-blown browsers and such
