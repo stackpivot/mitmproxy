@@ -309,6 +309,114 @@ class ProxyProtocol(protocol.Protocol):
         # stop the program
         terminate()
 
+class UDPProxyServer(protocol.DatagramProtocol):
+    '''
+    UDP proxy server.
+    '''
+    def __init__(self, log, ipaddr, port):
+        '''
+        Set logger, address for proxy client and address of origin client.
+        '''
+        self.origin = 'client'
+        self.client_addr = None
+        self.client_port = None
+        self.log = log
+        self.receive = defer.DeferredQueue()
+        self.transmit = defer.DeferredQueue()
+
+        # proxy client and proxy server has switched transmit and receive
+        client = UDPProxyClient(log, ipaddr, port, (self.receive,
+            self.transmit))
+        reactor.listenUDP(0, client)
+
+    def startProtocol(self):
+        '''
+        Start proxy client.
+        '''
+        self.receive.get().addCallback(self.proxy_data_received)
+
+    def stopProtocol(self):
+        '''
+        Terminate reactor.
+        '''
+        sys.stderr.write("%s side - Stop protocol.\n" % self.origin)
+        terminate()
+
+    def connectionRefused(self):
+        '''
+        Connection was refused.
+        '''
+        sys.stderr.write("%s side - Connection Refused.\n" % self.origin)
+        terminate()
+
+    def datagramReceived(self, datagram, (host, port)):
+        '''
+        Received a datagram for opposite origin side. Pass it between proxy
+        components (proxy server/proxy client). Save address of origin client.
+        '''
+        self.client_addr = host
+        self.client_port = port
+        self.log.log(self.origin, datagram.encode('hex'))
+        self.transmit.put(datagram)
+
+    def proxy_data_received(self, data):
+        '''
+        Callback method for sending data to origin side.
+        '''
+        self.transport.write(data, (self.client_addr, self.client_port))
+        self.receive.get().addCallback(self.proxy_data_received)
+
+class UDPProxyClient(protocol.DatagramProtocol):
+    '''
+    UDP proxy client.
+    '''
+    def __init__(self, log, ipaddr, port, (transmit, receive)):
+        '''
+        Set client.
+        '''
+        self.origin = 'server'
+        self.log = log
+        self.ipaddr = ipaddr
+        self.port = port
+        self.transmit = transmit
+        self.receive = receive
+
+    def startProtocol(self):
+        '''
+        Set host for sending datagrams.
+        '''
+        self.transport.connect(self.ipaddr, self.port)
+        sys.stderr.write("Sending to %s:%d.\n" % (self.ipaddr, self.port))
+        self.receive.get().addCallback(self.proxy_data_received)
+
+    def stopProtocol(self):
+        '''
+        Terminate reactor.
+        '''
+        sys.stderr.write("%s side - Stop protocol.\n" % self.origin)
+        terminate()
+
+    def connectionRefused(self):
+        '''
+        Connection was refused.
+        '''
+        sys.stderr.write("%s side - Connection Refused.\n" % self.origin)
+        terminate()
+
+    def datagramReceived(self, datagram, (host, port)):
+        '''
+        Received a datagram for opposite origin side. Pass it between proxy
+        components (proxy server/proxy client).
+        '''
+        self.log.log(self.origin, datagram.encode('hex'))
+        self.transmit.put(datagram)
+
+    def proxy_data_received(self, data):
+        '''
+        Callback method for sending data to origin side.
+        '''
+        self.transport.write(data)
+        self.receive.get().addCallback(self.proxy_data_received)
 
 class ProxyClient(ProxyProtocol):
     '''
