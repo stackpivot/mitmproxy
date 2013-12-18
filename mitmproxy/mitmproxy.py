@@ -504,7 +504,6 @@ class ReplayServer(protocol.Protocol):
     '''
     Replay server class
     '''
-
     def __init__(self):
         pass
 
@@ -585,6 +584,99 @@ class ReplayServer(protocol.Protocol):
         sys.stderr.write('Client disconnected.\n')
         self.log.close_log()
         terminate()
+
+
+class UDPReplayServer(protocol.DatagramProtocol):
+    '''
+    Replay server for UDP protocol.
+    '''
+    def __init__(self, log, (serverq, clientq), delaymod, clientfirst):
+        self.log = log
+        self.serverq = serverq
+        self.clientq = clientq
+        self.delaymod = delaymod
+        self.clientfirst = clientfirst
+        print "DEBUG: clientfirst %r" % clientfirst
+        self.success = False
+        self.client_host = None
+        self.client_port = None
+
+    def connectionRefused(self):
+        '''
+        Connection was refused.
+        '''
+        sys.stderr.write("client side - Connection Refused.\n")
+        terminate()
+
+    def datagramReceived(self, data, (host, port)):
+        '''
+        Called when client send us some data.
+        Compare received data with expected message from
+        the client message queue (cq), report mismatch (if any)
+        try sending a reply (if available) by calling sendNext().
+        '''
+        # save the client address and port
+        self.client_host = host
+        self.client_port = port
+        try:
+            expected = self.clientq.get(False)
+        except Queue.Empty:
+            raise MITMException("Nothing more expected in this session.")
+
+        exp_hex = expected[1]
+        got_hex = data.encode('hex')
+
+        import pdb
+        pdb.set_trace()
+        if got_hex == exp_hex:
+            self.log.log('client', expected[1])
+            self.send_next()
+        else:
+            # received something else, terminate
+            sys.stderr.write(
+                "ERROR: Expected %s (%s), got %s (%s).\n"
+                % (exp_hex, exp_hex.decode('hex').translate(PRINTABLE_FILTER),
+                    got_hex, got_hex.decode('hex').translate(PRINTABLE_FILTER)))
+            self.log.close_log()
+            terminate()
+
+    def send_next(self):
+        '''
+        Called after the client connects.
+        We shall send (with a delay) all the messages
+        from our queue until encountering either None or
+        an exception. In case a reply is not expected from
+        us at this time, the head of queue will hold None
+        (client is expected to send more messages before
+        we're supposed to send a reply) - so we just "eat"
+        the None from head of our queue (sq).
+        '''
+        while True:
+            try:
+                # gets either:
+                #  * a message - continue while loop (send the message)
+                #  * None - break from the loop (client talks next)
+                #  * Empty exception - close the session
+                reply = self.serverq.get(False)
+                if reply is None:
+                    break
+            except Queue.Empty:
+                # both cq and sq empty -> close the session
+                assert self.serverq.empty()
+                assert self.clientq.empty()
+                sys.stderr.write('Success.\n')
+                self.success = True
+                self.log.close_log()
+                self.transport.loseConnection()
+                break
+
+            (delay, what) = reply
+            self.log.log('server', what)
+            # sleep for a while (read from proxy log),
+            # modified by delayMod
+            time.sleep(delay * self.delaymod)
+            self.transport.write(what.decode('hex'), self.client_host,
+                    self.client_port)
 
 
 class ReplayServerFactory(protocol.ServerFactory):
