@@ -89,19 +89,19 @@ def ssh_proxy_option_parser(port, localport):
         help='Save log to FILE instead of writing to stdout')
     parser.add_option(
         '-a', '--client-pubkey', dest='clientpubkey', type='string',
-        metavar='FILE', default='~/.mitmkeys/id_rsa.pub',
+        metavar='FILE', default=os.path.expanduser('~/.mitmkeys/id_rsa.pub'),
         help='Use FILE as the client pubkey (default: %default)')
     parser.add_option(
         '-A', '--client-privkey', dest='clientprivkey', type='string',
-        metavar='FILE', default='~/.mitmkeys/id_rsa',
+        metavar='FILE', default=os.path.expanduser('~/.mitmkeys/id_rsa'),
         help='Use FILE as the client privkey (default: %default)')
     parser.add_option(
         '-b', '--server-pubkey', dest='serverpubkey', type='string',
-        metavar='FILE', default='~/.mitmkeys/id_rsa.pub',
+        metavar='FILE', default=os.path.expanduser('~/.mitmkeys/id_rsa.pub'),
         help='Use FILE as the server pubkey (default: %default)')
     parser.add_option(
         '-B', '--server-privkey', dest='serverprivkey', type='string',
-        metavar='FILE', default='~/.mitmkeys/id_rsa',
+        metavar='FILE', default=os.path.expanduser('~/.mitmkeys/id_rsa'),
         help='Use FILE as the server privkey (default: %default)')
     parser.add_option(
         '-s', '--show-password', dest='showpassword', action='store_true',
@@ -163,11 +163,11 @@ def ssh_replay_option_parser(localport):
         help='Modify response delay (default: %default)')
     parser.add_option(
         '-b', '--server-pubkey', dest='serverpubkey', type='string',
-        metavar='FILE', default='~/.mitmkeys/id_rsa.pub',
+        metavar='FILE', default=os.path.expanduser('~/.mitmkeys/id_rsa.pub'),
         help='Use FILE as the server pubkey (default: %default)')
     parser.add_option(
         '-B', '--server-privkey', dest='serverprivkey', type='string',
-        metavar='FILE', default='~/.mitmkeys/id_rsa',
+        metavar='FILE', default=os.path.expanduser('~/.mitmkeys/id_rsa'),
         help='Use FILE as the server privkey (default: %default)')
     parser.add_option(
         '-s', '--show-password', dest='showpassword', action='store_true',
@@ -596,7 +596,6 @@ class UDPReplayServer(protocol.DatagramProtocol):
         self.clientq = clientq
         self.delaymod = delaymod
         self.clientfirst = clientfirst
-        print "DEBUG: clientfirst %r" % clientfirst
         self.success = False
         self.client_host = None
         self.client_port = None
