@@ -70,8 +70,8 @@ Other protocols
 ---------------
 ...are not much different. For extra options see the corresponding `--help` outputs.
 
-Other useful tools
-------------------
+Useful tools
+------------
 The `mitmlogdiff` provides a nice interface for comparing two proxy logs in case something goes awry (uses vimdiff, strips timestamps from the logs for easy comparison). Usage:
 
 ```
