@@ -78,7 +78,27 @@ The `mitmlogdiff` provides a nice interface for comparing two proxy logs in case
 mitmlogdiff frist.log second.log
 ```
 
-The extra proof-of-concept `fencegenlog` tool facilitates capturing logs and their hierarchical storage for multiple fencing devices (along with multiple protocols, firmware versions, etc). For usage info see the script's source (pretty much self-documenting). The same goes for `fencetestlog` which tests fencing agent against multiple known-good logs in order to see what is broken - essentially regression testing. These two tools could require some level of adaptation for more specific tasks.
+The extra proof-of-concept `fencegenlog` tool facilitates capturing logs and their hierarchical storage for multiple fencing devices (along with multiple protocols, firmware versions, etc). For usage info see the script's source (pretty much self-documenting). The same goes for `fencetestlog` which tests fencing agent against multiple known-good logs in order to see what is broken - essentially regression testing. These two tools could require some level of adaptation for more specific tasks. Example usage:
+
+```
+# either provide args on commandline or interactively
+fencegenlog [PROTOCOL] [DEVICE_NAME] [FW_VERSION] [OPERATION] [PROXY_ARGS]
+
+# eg. use mitmproxy_ssh (ssh protocol), save log as "apc" device with firmware version "1.2" for action "reboot" (those 3 parameters can be whatever), with not extra args for mitmproxy
+fencegenlog ssh apc 1.2 reboot
+# this results in creating ~/.mitmlogs/ssh/apc/1.2/reboot/1.log file, which can be used for regression testing later on
+
+# repeat the above for each protocol/device/firmware/operation combination you want to test
+
+# again, params can ge supplied either on command-line or interactively
+fencetestlog [PROTOCOL] [DEVICE_NAME] [FW_VERSION] [OPERATION] [FENCE_CMD] [REPLAY_ARGS]
+
+# eg. to test all the apc over ssh logs for rebooting we created
+fencetestlog ssh apc '*' reboot 'fence_apc blahblahblah
+# this will run `mitmreplay_ssh` and then `fence_apc blahblahblah` (point it to replay server host/port, with correct login credentials, give it some action to perform, etc - essentially the same as in the above telnet how-to)  with each log for each fw version of apc's reboot action over ssh and report the success/fail counts, along with list of failed test files
+# remember to properly quote all the params or enter them interactively if not sure
+```
+
 
 Protocol-specific notes
 =======================
