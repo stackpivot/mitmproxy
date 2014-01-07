@@ -24,6 +24,61 @@ to break with each fencing device firmware upgrade, and then again (after
 fixing for the new FW) for older firmware versions. :)
 
 
+How-to
+======
+NOTE: assuming fencing-specific usage
+
+First, generate the required keypairs with `mitmkeygen` (needed for SSL and SSH). These will get saved in `~/.mitmkeys`.
+
+Telnet
+------
+To capture traffic between fencing agent and device, use `mitmproxy_telnet`:
+
+```
+mitmproxy_telnet [-H REMOTE_HOST] [-P REMOTE_PORT] [-p LOCAL_PORT] [-o OUTPUT_FILE]
+```
+
+eg.: to proxy requests to device.example.com:123 with proxy running on local port 1234 and outputting the captured traffic to capture.log:
+
+```
+mitmproxy_telnet -H device.example.com -P 123 -p 1234 -o capture.log
+```
+
+Once the proxy server starts listening the fencing agent can be launched, eg. for APC:
+
+```
+fence_apc -a localhost -u 1234 -l username -p password [...ACTION...]
+```
+
+After the fencing agent finished, you'll find the specified conversation log file (`capture.log` in this example), or STDOUT if you haven't specified any output file. STDOUT redirects work, too - any warnings/errors get logged to STDERR.
+
+Now you can view the log in more human-friendly format with `mitmlogview`. You can even make it faster or slower with the `-d` option (see `--help` for details).
+
+```
+mitmlogview -f capture.log
+```
+
+If you're satisfied with the captured log file, then you can use it with replay server:
+
+```
+mitmreplay_telnet -f LOG_FILE [-p LOCAL_PORT] 
+```
+
+When the replay server starts listening, launch the fencing agent again, with the same parameters as before. "It should work." ;)
+
+Other protocols
+---------------
+...are not much different. For extra options see the corresponding `--help` outputs.
+
+Other useful tools
+------------------
+The `mitmlogdiff` provides a nice interface for comparing two proxy logs in case something goes awry (uses vimdiff, strips timestamps from the logs for easy comparison). Usage:
+
+```
+mitmlogdiff frist.log second.log
+```
+
+
 Protocol-specific notes
 =======================
 
