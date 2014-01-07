@@ -78,6 +78,7 @@ The `mitmlogdiff` provides a nice interface for comparing two proxy logs in case
 mitmlogdiff frist.log second.log
 ```
 
+The extra proof-of-concept `fencegenlog` tool facilitates capturing logs and their hierarchical storage for multiple fencing devices (along with multiple protocols, firmware versions, etc). For usage info see the script's source (pretty much self-documenting). The same goes for `fencetestlog` which tests fencing agent against multiple known-good logs in order to see what is broken - essentially regression testing. These two tools could require some level of adaptation for more specific tasks.
 
 Protocol-specific notes
 =======================
