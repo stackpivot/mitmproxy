@@ -21,6 +21,9 @@ import string
 import re
 import os
 import sshdebug
+import pdb
+import difflib
+import logging
 
 # "undefined" class members, attributes "defined" outside init
 # pylint: disable=E1101, W0201
@@ -200,6 +203,97 @@ def viewer_option_parser():
 
 PRINTABLE_FILTER = ''.join(
     [['.', chr(x)][chr(x) in string.printable[:-5]] for x in xrange(256)])
+
+
+def snmp_extract_request_id(packet):
+    '''
+    Extract some SNMP request-id information like indicies and value.
+
+    @param packet: Bytes of packet.
+    @return Tuple of request-id start index, end index and value in bytes.
+    (start index, end index, value in bytes)
+    '''
+    # Squence type 0x30 and SNMP PDU types Ax0*
+    complex_types = [0x30, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7]
+
+    i = 0
+    type_count = 0
+    while i < len(packet):
+        msg_type = ord(packet[i])
+        msg_i = i
+        type_count += 1
+        i += 1
+
+        length = ord(packet[i])
+        if length & 0x80 == 0x80:
+            # Get length specified by more than one byte.
+            len_bytes = length & 0x7f
+            i += 1
+            length = int(packet[i:i+len_bytes].encode('hex'), base=16)
+            i += len_bytes - 1
+
+        logging.debug("Type (%X) at [%d], Length = %d, bytes ends at [%d]",
+                msg_type, msg_i, length, i)
+
+        if type_count == 5:
+            # Request-id is in 5th Type block.
+            req_id = (i+1, i+1+length, packet[i+1:i+1+length])
+
+        # Move to next Type byte.
+        if msg_type in complex_types:
+            i += 1
+        else:
+            i += 1 + length
+
+    logging.debug("Request-id (0x%s) at [%d:%d]", req_id[2].encode('hex'),
+            req_id[0], req_id[1])
+    logging.debug("")
+    return req_id
+
+
+def snmp_replace_request_id(packet, from_packet, value=None):
+    '''
+    Replace SNMP request-id by request-id from other SNMP packet or form
+    the request-id value. If parameter value is specified, the parameter
+    from_packet is ignored.
+
+    @param packet: SNMP packet to replace.
+    @param from_packet: SNMP packet for request-id extracting.
+    @param value: Correct request-id value.
+    @return: Packet with replaced request-id.
+    '''
+    # XXX: error can occured
+    i_start, i_end, _ = snmp_extract_request_id(packet)
+    if value != None:
+        # XXX: error can occured
+        return packet[0:i_start] + value + packet[i_end:]
+    else:
+        # XXX: error can occured
+        _, _, value = snmp_extract_request_id(from_packet)
+        return packet[0:i_start] + value + packet[i_end:]
+
+
+def compare_strings(str_a, str_b, a="A", b="B"):
+    '''
+    Helper function for visualisation of differences between 2 strings.
+
+    @param str_a: First string.
+    @param str_b: Second string.
+    @param a: Description of first string.
+    @param b: Description of second string.
+    @return: None
+    '''
+    logging.debug("MATCHING BLOCKS:")
+    seq_matcher = difflib.SequenceMatcher(a = str_a, b = str_b)
+    for block in seq_matcher.get_matching_blocks():
+        logging.debug("  a[%d] and b[%d] match for %d elements" % block)
+    #for opcode in seq_matcher.get_opcodes():
+    #    logging.debug("  %s\ta[%d:%d] b[%d:%d]" % opcode)
+    differ = difflib.Differ()
+    diff = differ.compare([str_a + '\n'], [str_b + '\n'])
+    logging.debug("DIFF: %s <---> %s", a, b)
+    for i in diff:
+        logging.debug("%s", i)
 
 
 class Logger(object):
@@ -597,14 +691,16 @@ class UDPReplayServer(protocol.DatagramProtocol):
         self.delaymod = delaymod
         self.clientfirst = clientfirst
         self.success = False
-        self.client_host = None
-        self.client_port = None
+        self.client_addr = None
+        # NOTE: this remove sync mark 'None' from serverq, look into logreader
+        self.send_next()
+        self.respond_id = None
 
     def connectionRefused(self):
         '''
         Connection was refused.
         '''
-        sys.stderr.write("client side - Connection Refused.\n")
+        sys.stderr.write("ERROR: client has refused connection.\n")
         terminate()
 
     def datagramReceived(self, data, (host, port)):
@@ -613,29 +709,37 @@ class UDPReplayServer(protocol.DatagramProtocol):
         Compare received data with expected message from
         the client message queue (cq), report mismatch (if any)
         try sending a reply (if available) by calling sendNext().
+        Different request-ids in SNMP packet are ignored during comparsion.
         '''
-        # save the client address and port
-        self.client_host = host
-        self.client_port = port
+        # address for respond
+        self.client_addr = (host, port)
+
         try:
             expected = self.clientq.get(False)
         except Queue.Empty:
-            raise MITMException("Nothing more expected in this session.")
+            sys.stderr.write(
+                "ERROR: Nothing more expected in this session.\n")
+            self.log.close_log()
+            terminate()
+            return
 
         exp_hex = expected[1]
         got_hex = data.encode('hex')
-
-        import pdb
-        pdb.set_trace()
+        compare_strings(got_hex, exp_hex)
+        # Save request-id for respond
+        _, _, self.respond_id = snmp_extract_request_id(data)
+        # Replace request-id in expected packet by request-id from got packet.
+        exp_hex = snmp_replace_request_id(exp_hex.decode('hex'), None,
+                value=self.respond_id).encode('hex')
         if got_hex == exp_hex:
-            self.log.log('client', expected[1])
+            self.log.log('client', exp_hex)
             self.send_next()
         else:
             # received something else, terminate
             sys.stderr.write(
                 "ERROR: Expected %s (%s), got %s (%s).\n"
                 % (exp_hex, exp_hex.decode('hex').translate(PRINTABLE_FILTER),
-                    got_hex, got_hex.decode('hex').translate(PRINTABLE_FILTER)))
+                   got_hex, got_hex.decode('hex').translate(PRINTABLE_FILTER)))
             self.log.close_log()
             terminate()
 
@@ -666,16 +770,21 @@ class UDPReplayServer(protocol.DatagramProtocol):
                 sys.stderr.write('Success.\n')
                 self.success = True
                 self.log.close_log()
-                self.transport.loseConnection()
-                break
+                self.transport.stopListening()
+                terminate()
+                return
 
             (delay, what) = reply
-            self.log.log('server', what)
+            assert self.respond_id != None
+            # Set proper request-id for SNMP respond packet.
+            respond = snmp_replace_request_id(what.decode('hex'), None,
+                    self.respond_id)
+            compare_strings(what, respond.encode('hex'))
+            self.log.log('server', respond.encode('hex'))
             # sleep for a while (read from proxy log),
             # modified by delayMod
             time.sleep(delay * self.delaymod)
-            self.transport.write(what.decode('hex'), self.client_host,
-                    self.client_port)
+            self.transport.write(respond, self.client_addr)
 
 
 class ReplayServerFactory(protocol.ServerFactory):
