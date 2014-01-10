@@ -100,7 +100,7 @@ fencetestlog [PROTOCOL] [DEVICE_NAME] [FW_VERSION] [OPERATION] [FENCE_CMD] [REPL
 
 # eg. to test all the apc over ssh logs for rebooting we created:
 
-fencetestlog ssh apc '*' reboot 'fence_apc blahblahblah
+fencetestlog ssh apc '*' reboot 'fence_apc blahblahblah'
 
 # this will run `mitmreplay_ssh` and then `fence_apc blahblahblah`
 # (point it to replay server host/port, with correct login credentials,
