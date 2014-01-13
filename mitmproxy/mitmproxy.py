@@ -680,7 +680,7 @@ class ReplayServer(protocol.Protocol):
         terminate()
 
 
-class UDPReplayServer(protocol.DatagramProtocol):
+class SNMPReplayServer(protocol.DatagramProtocol):
     '''
     Replay server for UDP protocol.
     '''
