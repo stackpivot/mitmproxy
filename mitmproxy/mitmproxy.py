@@ -31,10 +31,15 @@ import logging
 
 def terminate():
     '''
-    Shutdown the twisted reactor
+    Shutdown the twisted reactor.
     '''
     if reactor.running:
-        reactor.stop()
+        # There is problem with UDP reactor. Exception ReactorNotRunning is
+        # thrown.
+        try:
+            reactor.stop()
+        except:
+            pass
 
 
 class MITMException(Exception):
@@ -207,7 +212,8 @@ PRINTABLE_FILTER = ''.join(
 
 def snmp_extract_request_id(packet):
     '''
-    Extract some SNMP request-id information like indicies and value.
+    Extract some SNMP request-id information like indicies and value. If an
+    error occure, raise MITMException.
 
     @param packet: Bytes of packet.
     @return Tuple of request-id start index, end index and value in bytes.
@@ -215,35 +221,42 @@ def snmp_extract_request_id(packet):
     '''
     # Squence type 0x30 and SNMP PDU types Ax0*
     complex_types = [0x30, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7]
-
+    req_id = None
     i = 0
     type_count = 0
+
     while i < len(packet):
-        msg_type = ord(packet[i])
-        msg_i = i
-        type_count += 1
-        i += 1
-
-        length = ord(packet[i])
-        if length & 0x80 == 0x80:
-            # Get length specified by more than one byte.
-            len_bytes = length & 0x7f
+        try:
+            msg_type = ord(packet[i])
+            msg_i = i
+            type_count += 1
             i += 1
-            length = int(packet[i:i+len_bytes].encode('hex'), base=16)
-            i += len_bytes - 1
 
-        logging.debug("Type (%X) at [%d], Length = %d, bytes ends at [%d]",
-                msg_type, msg_i, length, i)
+            length = ord(packet[i])
+            if length & 0x80 == 0x80:
+                # Get length specified by more than one byte.
+                len_bytes = length & 0x7f
+                i += 1
+                length = int(packet[i:i+len_bytes].encode('hex'), base=16)
+                i += len_bytes - 1
 
-        if type_count == 5:
-            # Request-id is in 5th Type block.
-            req_id = (i+1, i+1+length, packet[i+1:i+1+length])
+            logging.debug("Type (%X) at [%d], Length = %d, bytes ends at [%d]",
+                    msg_type, msg_i, length, i)
+
+            if type_count == 5:
+                # Request-id is in 5th Type block.
+                req_id = (i+1, i+1+length, packet[i+1:i+1+length])
+        except IndexError:
+            raise MITMException("Get other than SNMP packet.")
 
         # Move to next Type byte.
         if msg_type in complex_types:
             i += 1
         else:
             i += 1 + length
+
+    if req_id == None:
+        raise MITMException("Get other than SNMP packet.")
 
     logging.debug("Request-id (0x%s) at [%d:%d]", req_id[2].encode('hex'),
             req_id[0], req_id[1])
@@ -253,7 +266,7 @@ def snmp_extract_request_id(packet):
 
 def snmp_replace_request_id(packet, from_packet, value=None):
     '''
-    Replace SNMP request-id by request-id from other SNMP packet or form
+    Replace SNMP request-id by request-id from other SNMP packet or from
     the request-id value. If parameter value is specified, the parameter
     from_packet is ignored.
 
@@ -262,20 +275,22 @@ def snmp_replace_request_id(packet, from_packet, value=None):
     @param value: Correct request-id value.
     @return: Packet with replaced request-id.
     '''
-    # XXX: error can occured
-    i_start, i_end, _ = snmp_extract_request_id(packet)
-    if value != None:
-        # XXX: error can occured
-        return packet[0:i_start] + value + packet[i_end:]
-    else:
-        # XXX: error can occured
+    try:
+        i_start, i_end, _ = snmp_extract_request_id(packet)
+        if value != None:
+            return packet[0:i_start] + value + packet[i_end:]
         _, _, value = snmp_extract_request_id(from_packet)
         return packet[0:i_start] + value + packet[i_end:]
+    except IndexError:
+        raise MITMException("Get other than SNMP packet.")
+    except TypeError:
+        raise MITMException("Bad value parameter.")
 
 
 def compare_strings(str_a, str_b, a="A", b="B"):
     '''
-    Helper function for visualisation of differences between 2 strings.
+    Helper function for visualisation of differences between 2 strings. Prints
+    output only when logging is enabled.
 
     @param str_a: First string.
     @param str_b: Second string.
@@ -665,7 +680,7 @@ class ReplayServer(protocol.Protocol):
             sys.stderr.write(
                 "ERROR: Expected %s (%s), got %s (%s).\n"
                 % (exp_hex, exp_hex.decode('hex').translate(PRINTABLE_FILTER),
-                    got_hex, got_hex.decode('hex').translate(PRINTABLE_FILTER)))
+                   got_hex, got_hex.decode('hex').translate(PRINTABLE_FILTER)))
             self.log.close_log()
             terminate()
 
@@ -692,16 +707,13 @@ class SNMPReplayServer(protocol.DatagramProtocol):
         self.clientfirst = clientfirst
         self.success = False
         self.client_addr = None
-        # NOTE: this remove sync mark 'None' from serverq, look into logreader
-        self.send_next()
         self.respond_id = None
 
     def connectionRefused(self):
         '''
         Connection was refused.
         '''
-        sys.stderr.write("ERROR: client has refused connection.\n")
-        terminate()
+        self.error("Client refused connection.")
 
     def datagramReceived(self, data, (host, port)):
         '''
@@ -711,37 +723,44 @@ class SNMPReplayServer(protocol.DatagramProtocol):
         try sending a reply (if available) by calling sendNext().
         Different request-ids in SNMP packet are ignored during comparsion.
         '''
+        # NOTE: this remove sync mark 'None' from serverq, look into logreader
+        if self.respond_id == None:
+            self.send_next()
         # address for respond
         self.client_addr = (host, port)
-
         try:
             expected = self.clientq.get(False)
+            exp_hex = expected[1]
+            got_hex = data.encode('hex')
+            compare_strings(got_hex, exp_hex, a='Got packet',
+                    b='Expected packet')
+            # Save request-id for respond
+            _, _, self.respond_id = snmp_extract_request_id(data)
+            # Replace request-id in expected packet by id from got packet.
+            exp_hex = snmp_replace_request_id(exp_hex.decode('hex'), None,
+                    value=self.respond_id).encode('hex')
         except Queue.Empty:
-            sys.stderr.write(
-                "ERROR: Nothing more expected in this session.\n")
-            self.log.close_log()
-            terminate()
+            self.error("Nothing more expected in this session.")
+            return
+        except MITMException as exception:
+            self.error(exception)
             return
 
-        exp_hex = expected[1]
-        got_hex = data.encode('hex')
-        compare_strings(got_hex, exp_hex)
-        # Save request-id for respond
-        _, _, self.respond_id = snmp_extract_request_id(data)
-        # Replace request-id in expected packet by request-id from got packet.
-        exp_hex = snmp_replace_request_id(exp_hex.decode('hex'), None,
-                value=self.respond_id).encode('hex')
         if got_hex == exp_hex:
             self.log.log('client', exp_hex)
             self.send_next()
         else:
-            # received something else, terminate
-            sys.stderr.write(
-                "ERROR: Expected %s (%s), got %s (%s).\n"
-                % (exp_hex, exp_hex.decode('hex').translate(PRINTABLE_FILTER),
-                   got_hex, got_hex.decode('hex').translate(PRINTABLE_FILTER)))
-            self.log.close_log()
-            terminate()
+            self.error("Expected %s (%s), got %s (%s)." % (exp_hex,
+                exp_hex.decode('hex').translate(PRINTABLE_FILTER), got_hex,
+                got_hex.decode('hex').translate(PRINTABLE_FILTER)))
+
+    def error(self, errmsg):
+        '''
+        Write error message on standard error output and exit SNMPReplayServer.
+        '''
+        sys.stderr.write("ERROR: %s\n" % (errmsg))
+        self.log.close_log()
+        terminate()
 
     def send_next(self):
         '''
@@ -754,8 +773,8 @@ class SNMPReplayServer(protocol.DatagramProtocol):
         we're supposed to send a reply) - so we just "eat"
         the None from head of our queue (sq).
         '''
-        while True:
-            try:
+        try:
+            while True:
                 # gets either:
                 #  * a message - continue while loop (send the message)
                 #  * None - break from the loop (client talks next)
@@ -763,28 +782,28 @@ class SNMPReplayServer(protocol.DatagramProtocol):
                 reply = self.serverq.get(False)
                 if reply is None:
                     break
-            except Queue.Empty:
-                # both cq and sq empty -> close the session
-                assert self.serverq.empty()
-                assert self.clientq.empty()
-                sys.stderr.write('Success.\n')
-                self.success = True
-                self.log.close_log()
-                self.transport.stopListening()
-                terminate()
-                return
-
-            (delay, what) = reply
-            assert self.respond_id != None
-            # Set proper request-id for SNMP respond packet.
-            respond = snmp_replace_request_id(what.decode('hex'), None,
-                    self.respond_id)
-            compare_strings(what, respond.encode('hex'))
-            self.log.log('server', respond.encode('hex'))
-            # sleep for a while (read from proxy log),
-            # modified by delayMod
-            time.sleep(delay * self.delaymod)
-            self.transport.write(respond, self.client_addr)
+                (delay, what) = reply
+                assert self.respond_id != None
+                # Set proper request-id for SNMP respond packet.
+                respond = snmp_replace_request_id(what.decode('hex'), None,
+                        self.respond_id)
+                compare_strings(what, respond.encode('hex'),
+                        a="respond old_id", b="respond new_id")
+                self.log.log('server', respond.encode('hex'))
+                # sleep for a while (read from proxy log), modified by delayMod
+                time.sleep(delay * self.delaymod)
+                self.transport.write(respond, self.client_addr)
+        except Queue.Empty:
+            # both cq and sq empty -> close the session
+            assert self.serverq.empty()
+            assert self.clientq.empty()
+            sys.stderr.write('Success.\n')
+            self.success = True
+            self.log.close_log()
+            self.transport.stopListening()
+            terminate()
+        except MITMException as exception:
+            self.error(exception)
 
 
 class ReplayServerFactory(protocol.ServerFactory):
