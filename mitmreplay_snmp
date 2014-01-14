@@ -37,10 +37,11 @@ def main():
             opts.delaymod, clientfirst)
         reactor.listenUDP(opts.localport, server)
         reactor.run()
+        sys.exit(mitmproxy.exit_code)
 
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        sys.exit(mitmproxy.exit_code)
+        sys.exit(0)
