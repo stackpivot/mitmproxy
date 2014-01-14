@@ -6,7 +6,7 @@ Summary:	A collection of multi-protocol logging proxy servers and replay utiliti
 Group:		Development/Tools
 License:	GPLv2
 URL:		https://github.com/saironiq/mitmproxy
-Source0:	%{name}-%{version}.tar.gz
+Source0:	https://github.com/saironiq/mitmproxy/archive/%{name}-%{version}.tar.gz
 
 Requires:	python-twisted python-twisted-core python-twisted-conch
 
