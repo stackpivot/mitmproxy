@@ -25,9 +25,12 @@ import pdb
 import difflib
 import logging
 
+
 # "undefined" class members, attributes "defined" outside init
 # pylint: disable=E1101, W0201
-
+global exit_code
+exit_code = list()
+exit_code.append(0)
 
 def terminate():
     '''
@@ -247,6 +250,7 @@ def snmp_extract_request_id(packet):
                 # Request-id is in 5th Type block.
                 req_id = (i+1, i+1+length, packet[i+1:i+1+length])
         except IndexError:
+            exit_code.append(1)
             raise MITMException("Get other than SNMP packet.")
 
         # Move to next Type byte.
@@ -256,6 +260,7 @@ def snmp_extract_request_id(packet):
             i += 1 + length
 
     if req_id == None:
+        exit_code.append(1)
         raise MITMException("Get other than SNMP packet.")
 
     logging.debug("Request-id (0x%s) at [%d:%d]", req_id[2].encode('hex'),
@@ -282,8 +287,10 @@ def snmp_replace_request_id(packet, from_packet, value=None):
         _, _, value = snmp_extract_request_id(from_packet)
         return packet[0:i_start] + value + packet[i_end:]
     except IndexError:
+        exit_code.append(1)
         raise MITMException("Get other than SNMP packet.")
     except TypeError:
+        exit_code.append(1)
         raise MITMException("Bad value parameter.")
 
 
@@ -389,6 +396,7 @@ class ProxyProtocol(protocol.Protocol):
         else:
             # got some data to be sent, but we no longer
             # have a connection to the other side
+            exit_code.append(1)
             sys.stderr.write(
                 'Unable to send queued data: not connected to %s.\n'
                 % (self.origin))
@@ -455,6 +463,7 @@ class UDPProxyServer(protocol.DatagramProtocol):
         '''
         Connection was refused.
         '''
+        exit_code.append(1)
         sys.stderr.write("%s side - Connection Refused.\n" % self.origin)
         terminate()
 
@@ -509,6 +518,7 @@ class UDPProxyClient(protocol.DatagramProtocol):
         '''
         Connection was refused.
         '''
+        exit_code.append(1)
         sys.stderr.write("%s side - Connection Refused.\n" % self.origin)
         terminate()
 
@@ -561,6 +571,7 @@ class ProxyClientFactory(protocol.ClientFactory):
         self.log = log
 
     def clientConnectionFailed(self, connector, reason):
+        exit_code.append(1)
         self.clientq.put(False)
         sys.stderr.write('Unable to connect! %s\n' % reason.getErrorMessage())
 
@@ -578,6 +589,7 @@ class ProxyServer(ProxyProtocol):
             reactor.connect[PROTOCOL](
                 self.host, self.port, factory [, OTHER_OPTIONS])
         '''
+        exit_code.append(1)
         raise MITMException('You should implement this method in your code.')
     # pylint: enable=R0201
 
@@ -667,6 +679,7 @@ class ReplayServer(protocol.Protocol):
         try:
             expected = self.clientq.get(False)
         except Queue.Empty:
+            exit_code.append(1)
             raise MITMException("Nothing more expected in this session.")
 
         exp_hex = expected[1]
@@ -677,6 +690,7 @@ class ReplayServer(protocol.Protocol):
             self.send_next()
         else:
             # received something else, terminate
+            exit_code.append(1)
             sys.stderr.write(
                 "ERROR: Expected %s (%s), got %s (%s).\n"
                 % (exp_hex, exp_hex.decode('hex').translate(PRINTABLE_FILTER),
@@ -689,6 +703,7 @@ class ReplayServer(protocol.Protocol):
         Remote end closed the session.
         '''
         if not self.success:
+            exit_code.append(1)
             sys.stderr.write('FAIL! Premature end: not all messages sent.\n')
         sys.stderr.write('Client disconnected.\n')
         self.log.close_log()
@@ -713,6 +728,7 @@ class SNMPReplayServer(protocol.DatagramProtocol):
         '''
         Connection was refused.
         '''
+        exit_code.append(1)
         self.error("Client refused connection.")
 
     def datagramReceived(self, data, (host, port)):
@@ -740,9 +756,11 @@ class SNMPReplayServer(protocol.DatagramProtocol):
             exp_hex = snmp_replace_request_id(exp_hex.decode('hex'), None,
                     value=self.respond_id).encode('hex')
         except Queue.Empty:
+            exit_code.append(1)
             self.error("Nothing more expected in this session.")
             return
         except MITMException as exception:
+            exit_code.append(1)
             self.error(exception)
             return
 
@@ -750,6 +768,7 @@ class SNMPReplayServer(protocol.DatagramProtocol):
             self.log.log('client', exp_hex)
             self.send_next()
         else:
+            exit_code.append(1)
             self.error("Expected %s (%s), got %s (%s)." % (exp_hex,
                 exp_hex.decode('hex').translate(PRINTABLE_FILTER), got_hex,
                 got_hex.decode('hex').translate(PRINTABLE_FILTER)))
@@ -758,6 +777,7 @@ class SNMPReplayServer(protocol.DatagramProtocol):
         '''
         Write error message on standard error output and exit SNMPReplayServer.
         '''
+        exit_code.append(1)
         sys.stderr.write("ERROR: %s\n" % (errmsg))
         self.log.close_log()
         terminate()
@@ -803,6 +823,7 @@ class SNMPReplayServer(protocol.DatagramProtocol):
             self.transport.stopListening()
             terminate()
         except MITMException as exception:
+            exit_code.append(1)
             self.error(exception)
 
 
@@ -861,6 +882,7 @@ def logreader(inputfile, serverq=Queue.Queue(), clientq=Queue.Queue(),
                 # expected client messages
                 clientq.put([delay, what])
             else:
+                exit_code.append(1)
                 raise MITMException('Malformed proxy log!')
     return (serverq, clientq, clientfirst)
 
@@ -954,6 +976,7 @@ class SSHFactory(factory.SSHFactory):
         '''
         keypath = self.spub
         if not os.path.exists(keypath):
+            exit_code.append(1)
             raise MITMException(
                 "Private/public keypair not generated in the keys directory.")
 
@@ -965,6 +988,7 @@ class SSHFactory(factory.SSHFactory):
         '''
         keypath = self.spriv
         if not os.path.exists(keypath):
+            exit_code.append(1)
             raise MITMException(
                 "Private/public keypair not generated in the keys directory.")
         return {'ssh-rsa': keys.Key.fromFile(keypath)}
@@ -1064,6 +1088,7 @@ class SSHClientFactory(protocol.ClientFactory):
         self.sshdebug = proxy_factory.sshdebug
 
     def clientConnectionFailed(self, connector, reason):
+        exit_code.append(1)
         self.clientq.put(False)
         sys.stderr.write('Unable to connect! %s\n' % reason.getErrorMessage())
 
@@ -1156,6 +1181,7 @@ class SSHServerTransport(transport.SSHServerTransport):
         else:
             # got some data to be sent, but we no longer
             # have a connection to the other side
+            exit_code.append(1)
             sys.stderr.write(
                 'Unable to send queued data: not connected to %s.\n'
                 % (self.factory.origin))
@@ -1264,6 +1290,7 @@ class SSHClientTransport(transport.SSHClientTransport):
         else:
             # got some data to be sent, but we no longer
             # have a connection to the other side
+            exit_code.append(1)
             sys.stderr.write(
                 'Unable to send queued data: not connected to %s.\n'
                 % (self.factory.origin))
@@ -1338,6 +1365,7 @@ class ProxySSHUserAuthServer(userauth.SSHUserAuthServer):
         and disconnect msg is sent.
         '''
         if reason.check(MITMException):
+            exit_code.append(1)
             self.transport.sendDisconnect(
                     transport.DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE,
                     'too many bad auths')
@@ -1380,6 +1408,7 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
         # Proxy server may terminate reactor before proxy client send
         # DISCONNECT_MSG, but it doesn't matter.
         if method == False:
+            exit_code.append(1)
             can_continue = []
         else:
             can_continue = [method]
@@ -1391,6 +1420,7 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
             # old twisted 8.2.0
             if self.tryAuth(method):
                 return
+            exit_code.append(1)
             self.transport.sendDisconnect(
                     transport.DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE,
                     'no more authentication methods available')
@@ -1434,6 +1464,7 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
         '''
         keypath = self.transport.factory.cpub
         if not (os.path.exists(keypath)):
+            exit_code.append(1)
             raise MITMException(
                 "Public/private keypair not generated in the keys directory.")
         return keys.Key.fromFile(keypath).blob()
@@ -1444,6 +1475,7 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
         '''
         keypath = self.transport.factory.cpriv
         if not (os.path.exists(keypath)):
+            exit_code.append(1)
             raise MITMException(
                 "Public/private keypair not generated in the keys directory.")
         return defer.succeed(keys.Key.fromFile(keypath).keyObject)
@@ -1507,6 +1539,7 @@ class SSHCredentialsChecker(object):
             raise failure.Failure(error.UnauthorizedLogin)
         elif result == -1:
             # Received disconnect from server.
+            exit_code.append(1)
             raise failure.Failure(
                     MITMException("No more authentication methods"))
 
@@ -1709,6 +1742,7 @@ class SSHReplayServerProtocol(ReplayServer):
         at ssh layer.
         '''
         if not self.success:
+            exit_code.append(1)
             sys.stderr.write('FAIL! Premature end: not all messages sent.\n')
         self.log.close_log()
 

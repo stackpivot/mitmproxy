@@ -31,7 +31,7 @@ def main():
 
     reactor.resolve(opts.host).addCallback(got_ip, opts)
     reactor.run()
-    sys.exit(mitmproxy.exit_code)
+    sys.exit(mitmproxy.exit_code.pop())
 
 if __name__ == "__main__":
     try:

@@ -51,7 +51,7 @@ def main():
         opts.localport, factory, ssl.DefaultOpenSSLContextFactory(
             '~/.mitmkeys/server.key', '~/.mitmkeys/server.crt'))
     reactor.run()
-    sys.exit(mitmproxy.exit_code)
+    sys.exit(mitmproxy.exit_code.pop())
 
 
 if __name__ == '__main__':

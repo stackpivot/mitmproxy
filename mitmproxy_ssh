@@ -27,7 +27,7 @@ def main():
     factory = mitmproxy.SSHServerFactory(opts)
     reactor.listenTCP(opts.localport, factory)
     reactor.run()
-    sys.exit(mitmproxy.exit_code)
+    sys.exit(mitmproxy.exit_code.pop())
 
 
 if __name__ == "__main__":
