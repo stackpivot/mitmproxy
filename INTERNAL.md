@@ -22,6 +22,7 @@ Supported network protocols
 
 MITM proxy server in general
 ----------------------------
+`
             +------------------MITM PROXY-----------------------+
 +------+    | +------------+   +-------------+   +------------+ |    +------+
 |      |    | |   (receive)|<<<|DefferedQueue|<<<|(transmit)  | |    |      |
@@ -33,6 +34,7 @@ MITM proxy server in general
             +---------------------------------------------------+
                  |                                         |
                  |------------->   Logfile   <-------------|
+`
 
 As you can see on above ascii image MITM proxy has 2 componets proxy server
 and proxy client, which communicate between themselves by deffered queues. If
