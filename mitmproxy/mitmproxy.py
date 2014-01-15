@@ -1116,6 +1116,7 @@ class SSHServerTransport(transport.SSHServerTransport):
         and sets some attributes.
         '''
         transport.SSHServerTransport.connectionMade(self)
+        sys.stderr.write("Original client connected to proxy server.\n")
 
     def connectionLost(self, reason):
         '''
@@ -1225,15 +1226,13 @@ class SSHClientTransport(transport.SSHClientTransport):
         '''
         Either end of the proxy received a disconnect.
         '''
-        if self.factory.origin == 'server':
-            sys.stderr.write('Disconnected from real server.\n')
-        else:
-            sys.stderr.write('Client disconnected.\n')
-        self.factory.log.close_log()
-        # destroy the receive queue
-        self.factory.receive = None
+        sys.stderr.write('Disconnected from real server.\n')
         # put a special value into tx queue to indicate connecion loss
         self.factory.transmit.put(False)
+        # destroy the receive queue
+        self.factory.receive = None
+        self.factory.log.close_log()
+        terminate()
 
     def dispatchMessage(self, messageNum, payload):
         '''
@@ -1316,7 +1315,7 @@ class ReplaySSHServerTransport(transport.SSHServerTransport):
         Print info on stderr and call parent method after
         establishing connection.
         '''
-        return transport.SSHServerTransport.connectionMade(self)
+        transport.SSHServerTransport.connectionMade(self)
 
     def dispatchMessage(self, messageNum, payload):
         '''
@@ -1411,7 +1410,15 @@ class ProxySSHUserAuthClient(userauth.SSHUserAuthClient):
             exit_code.append(1)
             can_continue = []
         else:
-            can_continue = [method]
+            # Server supports less auth methods than proxy server. We pretend
+            # that auth methods failed and wait for another auth method.
+            if method not in can_continue:
+                self.transport.factory.transmit.put(0)
+                deferred_method = self.transport.factory.receive.get()
+                deferred_method.addCallback(self.try_method, can_continue)
+                return deferred_method
+            else:
+                can_continue = [method]
 
         # fix for python-twisted version 8.2.0 (RHEL 6.x)
         try:
