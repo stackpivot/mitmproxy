@@ -1,7 +1,7 @@
 Name:		mitmproxy
 Version:	0.1
 Release:	1%{?dist}
-Summary:	A collection of multi-protocol logging proxy servers and replay utilities for Telnet, HTTP, SSL and SSH.
+Summary:	A collection of multi-protocol logging proxy servers and replay utilities for Telnet, HTTP, SSL, SSH and SNMP.
 
 Group:		Development/Tools
 License:	GPLv2
@@ -18,6 +18,7 @@ Supported protocols:
  * HTTP
  * SSL
  * SSH
+ * SNMP
 
 
 %prep
