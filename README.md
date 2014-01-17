@@ -18,6 +18,20 @@ Dependencies
 * Python 2.7
 * Twisted Python library (python-twisted)
 
+Install
+-------
+
+```
+python2 setup.py build
+sudo python2 setup.py install
+```
+
+Or however you like to build&install python packages.
+
+
+Alternatively, you can also use the source RPM listed under Releases on Github.
+
+
 Motivation
 ----------
 Created as a debugging tool for various enterprise fencing agents that tend
