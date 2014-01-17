@@ -49,6 +49,7 @@ servers on twisted conch documentation pages:
 [conch doc](http://twistedmatrix.com/documents/current/conch/index.html).
 Another twisted.conch.ssh howto can be found here:
 [ticket-5474](http://twistedmatrix.com/trac/ticket/5474)
+and
 [ticket-6001](http://twistedmatrix.com/trac/ticket/6001)
 
 
