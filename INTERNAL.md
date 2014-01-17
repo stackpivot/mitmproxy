@@ -47,10 +47,10 @@ MITM SSH proxy and replay servers are using implementation of SSHv2 protocol
 from `twisted.conch.ssh` package. There are some examples of SSH clients and
 servers on twisted conch documentation pages:
 [conch doc](http://twistedmatrix.com/documents/current/conch/index.html).
-Another twisted.conch.ssh howto can be found here:
+Another `twisted.conch.ssh` howto can be found here:
 [ticket-5474](http://twistedmatrix.com/trac/ticket/5474)
 and
-[ticket-6001](http://twistedmatrix.com/trac/ticket/6001)
+[ticket-6001](http://twistedmatrix.com/trac/ticket/6001).
 
 
 Notes on SSH
