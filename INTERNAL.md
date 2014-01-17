@@ -7,7 +7,7 @@ Introduction
 The `mitmproxy` library consists of 2 modules: `mitmproxy.py` and `sshdebug.py`.
 Module `mitmproxy.py` contains implementation of proxy and replay servers
 for supported network protocols. Module `sshdebug.py` serves for more human-friendly
-debugging output of unencrypted SSH messages (not one long line hexa number string).
+debugging output of unencrypted SSH messages.
 
 The library is built on the Python Twisted network framework - see the project homepage
 at [twistedmatrix.com](http://twistedmatrix.com/).
