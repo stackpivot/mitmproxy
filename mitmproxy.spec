@@ -8,7 +8,7 @@ License:	GPLv2
 URL:		https://github.com/saironiq/mitmproxy
 Source0:	%{name}-%{version}.tar.gz
 
-Requires:	python-twisted-core python-twisted-conch
+Requires:	bash python-twisted-core python-twisted-conch
 
 %description
 A collection of multi-protocol logging proxy servers and replay utilities.
