@@ -7,6 +7,7 @@ Supported protocols:
   * HTTP
   * SSL
   * SSH
+  * SNMP
 
 License
 -------
