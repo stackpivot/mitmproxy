@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/usr/bin/env bash
 
 # params either read from stdin or as positional args
 if [ -z "$1" ] ; then
