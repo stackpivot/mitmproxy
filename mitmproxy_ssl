@@ -33,8 +33,8 @@ def main():
     '''
     (opts, _) = mitmproxy.proxy_option_parser(443, 4443)
 
-    if not os.path.exists('~/.mitmkeys/server.key') \
-    or not os.path.exists('~/.mitmkeys/server.crt'):
+    if not os.path.exists(os.path.expanduser('~/.mitmkeys/server.key')) \
+    or not os.path.exists(os.path.expanduser('~/.mitmkeys/server.crt')):
         print "Please do create server certificates (see readme)."
         sys.exit(1)
 
@@ -49,7 +49,8 @@ def main():
         ProxyServer, opts.host, opts.port, log)
     reactor.listenSSL(
         opts.localport, factory, ssl.DefaultOpenSSLContextFactory(
-            '~/.mitmkeys/server.key', '~/.mitmkeys/server.crt'))
+            os.path.expanduser('~/.mitmkeys/server.key'),
+            os.path.expanduser('~/.mitmkeys/server.crt')))
     reactor.run()
     sys.exit(mitmproxy.exit_code.pop())
 
