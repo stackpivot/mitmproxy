@@ -1,17 +1,19 @@
 Name:		mitmproxy
 Version:	0.1
 Release:	1%{?dist}
-Summary:	A collection of multi-protocol logging proxy servers and replay utilities for Telnet, HTTP, SSL, SSH and SNMP.
+Summary:	Logging proxy/replay servers for Telnet, HTTP, SSL, SSH and SNMP
 
 Group:		Development/Tools
 License:	GPLv2
 URL:		https://github.com/saironiq/mitmproxy
 Source0:	%{name}-%{version}.tar.gz
 
+BuildArchitectures: noarch
+
 Requires:	filesystem bash python-twisted-core python-twisted-conch
 
 %description
-A collection of multi-protocol logging proxy servers and replay utilities.
+Logging proxy/replay servers for multiple protocols.
 
 Supported protocols:
  * Telnet
@@ -20,6 +22,8 @@ Supported protocols:
  * SSH
  * SNMP
 
+%changelog
+* Wed Jan 22 2014 Sairon Istyar <saironiq@gmail.com> 0.1-1 initial release
 
 %prep
 %setup -qc
@@ -41,5 +45,6 @@ rm -rf ${buildroot}
 
 %files
 %defattr(-,root,root)
+%doc %{name}-%{version}/{README.md,INTERNAL.md,LICENSE}
 %{python_sitelib}
 %{_bindir}/*
