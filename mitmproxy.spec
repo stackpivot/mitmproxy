@@ -35,6 +35,13 @@ cd %{name}-%{version}
 %{__python} setup.py build
 cd man1
 gzip mitmproxy.1
+
+
+%install
+cd %{name}-%{version}
+%{__python} setup.py install --root=%{buildroot}
+install -Dm 644 man1/mitmproxy.1.gz %_mandir/man1/
+cd %_mandir/man1
 for proto in http snmp ssh ssl telnet ; do
   ln -s mitmproxy.1.gz mitmproxy_${proto}.1.gz
   ln -s mitmproxy.1.gz mitmreplay_${proto}.1.gz
@@ -44,18 +51,13 @@ for other in mitmkeygen mitmlogdiff mitmlogview fencegenlog fencetestlog ; do
 done
 
 
-%install
-cd %{name}-%{version}
-%{__python} setup.py install --root=%{buildroot}
-install -Dm 644 man1/*.1.gz %_mandir/man1/
-
-
 %clean
 rm -rf ${buildroot}
 
 
 %files
 %defattr(-,root,root)
-%doc %{name}-%{version}/{README.md,INTERNAL.md,LICENSE} %_mandir/man1/*.1.gz
+%doc %{name}-%{version}/{README.md,INTERNAL.md,LICENSE}
+%_mandir/man1/*.1.gz
 %{python_sitelib}
 %{_bindir}/*
