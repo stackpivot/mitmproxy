@@ -1,4 +1,3 @@
-#!/usr/bin/env python2
 '''
 SSH message logger.
 
