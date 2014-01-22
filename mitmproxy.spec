@@ -40,8 +40,8 @@ gzip mitmproxy.1
 %install
 cd %{name}-%{version}
 %{__python} setup.py install --root=%{buildroot}
-install -Dm 644 man1/mitmproxy.1.gz %_mandir/man1/
-cd %_mandir/man1
+install -Dm 644 man1/mitmproxy.1.gz %{buildroot}/%{_mandir}/man1/mitmproxy.1.gz
+cd %{buildroot}/%{_mandir}/man1
 for proto in http snmp ssh ssl telnet ; do
   ln -s mitmproxy.1.gz mitmproxy_${proto}.1.gz
   ln -s mitmproxy.1.gz mitmreplay_${proto}.1.gz
