@@ -23,7 +23,8 @@ Supported protocols:
  * SNMP
 
 %changelog
-* Wed Jan 22 2014 Sairon Istyar <saironiq@gmail.com> 0.1-1 initial release
+* Wed Jan 22 2014 Sairon Istyar <saironiq@gmail.com> 0.1-1
+initial version
 
 %prep
 %setup -qc
