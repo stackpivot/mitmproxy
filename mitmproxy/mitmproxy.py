@@ -1,4 +1,3 @@
-#!/usr/bin/env python2
 '''
 Common MITM proxy classes.
 '''
