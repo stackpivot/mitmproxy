@@ -33,6 +33,14 @@ initial version
 %build
 cd %{name}-%{version}
 %{__python} setup.py build
+cd man1
+for proto in http snmp ssh ssl telnet ; do
+  ln -s mitmproxy.1 mitmproxy_${proto}.1
+  ln -s mitmproxy.1 mitmreplay_${proto}.1
+done
+for other in mitmkeygen mitmlogdiff mitmlogview fencegenlog fencetestlog ; do
+  ln -s mitmproxy.1 ${other}.1
+done
 
 
 %install
@@ -46,6 +54,6 @@ rm -rf ${buildroot}
 
 %files
 %defattr(-,root,root)
-%doc %{name}-%{version}/{README.md,INTERNAL.md,LICENSE}
+%doc %{name}-%{version}/{README.md,INTERNAL.md,LICENSE,man1/*.1}
 %{python_sitelib}
 %{_bindir}/*
