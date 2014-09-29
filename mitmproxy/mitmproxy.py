@@ -929,7 +929,7 @@ def logviewer(inputfile, delaymod):
 ################################################################################
 class SSHFactory(factory.SSHFactory):
     '''
-    Base factory class for mitmproxy ssh servers. Set defualt ssh protocol and
+    Base factory class for mitmproxy ssh servers. Set default ssh protocol and
     object attributes. Create and set your authentication checker or subclass
     and override defaults: protocol, services, portal, checker and attributes.
 
@@ -1001,7 +1001,7 @@ class SSHServerFactory(SSHFactory):
     # pylint: disable=R0902,R0913
     def __init__(self, opts):
         '''
-        Initialize base class and override defualt protocol, services and set
+        Initialize base class and override default protocol, services and set
         attributes and credentials checker.
         '''
         SSHFactory.__init__(self, opts)
